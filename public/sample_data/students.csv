@@ -1,0 +1,9 @@
+registration_no,name,course,year_of_study,course_code,course_name,grade,semester,academic_year
+S001,Jennifer N,Bachelor of IT,3,DBMS101,Database Management I,A,1,2025
+S001,Jennifer N,Bachelor of IT,3,PROG101,Programming I,B,1,2025
+S001,Jennifer N,Bachelor of IT,3,WEB201,Web Development,A,2,2025
+S001,Jennifer N,Bachelor of IT,3,NET101,Networking I,C,2,2025
+S002,Peter O,Bachelor of CS,2,PROG101,Programming I,A,1,2025
+S002,Peter O,Bachelor of CS,2,DBMS101,Database Management I,B,1,2025
+S003,Grace A,Bachelor of IT,2,WEB201,Web Development,A,1,2025
+S003,Grace A,Bachelor of IT,2,PROG101,Programming I,C,1,2025

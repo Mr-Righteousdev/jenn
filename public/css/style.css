@@ -1,0 +1,29 @@
+body {
+    background-color: #f8f9fa;
+}
+.min-vh-75 {
+    min-height: 75vh;
+}
+.table > tbody > tr > td {
+    vertical-align: middle;
+}
+.btn-group-actions {
+    white-space: nowrap;
+}
+.btn-group-actions .btn {
+    margin-right: 0.25rem;
+}
+.btn-group-actions .btn:last-child {
+    margin-right: 0;
+}
+.card {
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+.display-6 {
+    font-size: 2rem;
+}
+@media print {
+    .no-print { display: none !important; }
+    body { background: white; }
+    .card { box-shadow: none; border: 1px solid #dee2e6; }
+}
