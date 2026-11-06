@@ -21,8 +21,8 @@ CREATE TABLE IF NOT EXISTS `course_unit_skills` (
   `weight` decimal(3,2) NOT NULL DEFAULT 0.50,
   PRIMARY KEY (`course_code`,`skill_id`),
   KEY `skill_id` (`skill_id`),
-  CONSTRAINT `1` FOREIGN KEY (`course_code`) REFERENCES `course_units` (`code`) ON DELETE CASCADE,
-  CONSTRAINT `2` FOREIGN KEY (`skill_id`) REFERENCES `skills` (`skill_id`) ON DELETE CASCADE
+  FOREIGN KEY (`course_code`) REFERENCES `course_units` (`code`) ON DELETE CASCADE,
+  FOREIGN KEY (`skill_id`) REFERENCES `skills` (`skill_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS `course_units` (
   `code` varchar(25) NOT NULL,
@@ -47,8 +47,8 @@ CREATE TABLE IF NOT EXISTS `job_readiness` (
   PRIMARY KEY (`readiness_id`),
   UNIQUE KEY `uq_student_job` (`student_id`,`job_id`),
   KEY `job_id` (`job_id`),
-  CONSTRAINT `1` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`) ON DELETE CASCADE,
-  CONSTRAINT `2` FOREIGN KEY (`job_id`) REFERENCES `jobs` (`job_id`) ON DELETE CASCADE
+  FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`job_id`) REFERENCES `jobs` (`job_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS `job_skills` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -59,8 +59,8 @@ CREATE TABLE IF NOT EXISTS `job_skills` (
   PRIMARY KEY (`id`),
   KEY `job_id` (`job_id`),
   KEY `skill_id` (`skill_id`),
-  CONSTRAINT `1` FOREIGN KEY (`job_id`) REFERENCES `jobs` (`job_id`) ON DELETE CASCADE,
-  CONSTRAINT `2` FOREIGN KEY (`skill_id`) REFERENCES `skills` (`skill_id`) ON DELETE CASCADE
+  FOREIGN KEY (`job_id`) REFERENCES `jobs` (`job_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`skill_id`) REFERENCES `skills` (`skill_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS `jobs` (
   `job_id` int(11) NOT NULL AUTO_INCREMENT,
@@ -79,8 +79,8 @@ CREATE TABLE IF NOT EXISTS `programme_units` (
   `semester` int(11) NOT NULL,
   PRIMARY KEY (`programme_code`,`course_code`),
   KEY `course_code` (`course_code`),
-  CONSTRAINT `1` FOREIGN KEY (`programme_code`) REFERENCES `programmes` (`code`) ON DELETE CASCADE,
-  CONSTRAINT `2` FOREIGN KEY (`course_code`) REFERENCES `course_units` (`code`) ON DELETE CASCADE
+  FOREIGN KEY (`programme_code`) REFERENCES `programmes` (`code`) ON DELETE CASCADE,
+  FOREIGN KEY (`course_code`) REFERENCES `course_units` (`code`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS `programmes` (
   `code` varchar(25) NOT NULL,
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS `programmes` (
   `is_active` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`code`),
   KEY `faculty_code` (`faculty_code`),
-  CONSTRAINT `1` FOREIGN KEY (`faculty_code`) REFERENCES `faculties` (`code`) ON DELETE SET NULL
+  FOREIGN KEY (`faculty_code`) REFERENCES `faculties` (`code`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS `recommendations` (
   `rec_id` int(11) NOT NULL AUTO_INCREMENT,
@@ -104,14 +104,14 @@ CREATE TABLE IF NOT EXISTS `recommendations` (
   PRIMARY KEY (`rec_id`),
   KEY `student_id` (`student_id`),
   KEY `skill_id` (`skill_id`),
-  CONSTRAINT `1` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`) ON DELETE CASCADE,
-  CONSTRAINT `2` FOREIGN KEY (`skill_id`) REFERENCES `skills` (`skill_id`) ON DELETE CASCADE
+  FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`skill_id`) REFERENCES `skills` (`skill_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS `role_permissions` (
   `role_id` int(11) NOT NULL,
   `permission` varchar(50) NOT NULL,
   PRIMARY KEY (`role_id`,`permission`),
-  CONSTRAINT `1` FOREIGN KEY (`role_id`) REFERENCES `roles` (`role_id`) ON DELETE CASCADE
+  FOREIGN KEY (`role_id`) REFERENCES `roles` (`role_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS `roles` (
   `role_id` int(11) NOT NULL AUTO_INCREMENT,
@@ -136,9 +136,9 @@ CREATE TABLE IF NOT EXISTS `skill_evidence` (
   UNIQUE KEY `uq_evidence` (`student_id`,`skill_id`,`lecturer_id`),
   KEY `skill_id` (`skill_id`),
   KEY `lecturer_id` (`lecturer_id`),
-  CONSTRAINT `1` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`) ON DELETE CASCADE,
-  CONSTRAINT `2` FOREIGN KEY (`skill_id`) REFERENCES `skills` (`skill_id`) ON DELETE CASCADE,
-  CONSTRAINT `3` FOREIGN KEY (`lecturer_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
+  FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`skill_id`) REFERENCES `skills` (`skill_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`lecturer_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS `skills` (
   `skill_id` int(11) NOT NULL AUTO_INCREMENT,
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS `student_results` (
   `mark` decimal(5,2) DEFAULT NULL,
   PRIMARY KEY (`result_id`),
   UNIQUE KEY `uq_attempt` (`student_id`,`course_code`,`academic_year`),
-  CONSTRAINT `1` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`) ON DELETE CASCADE
+  FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS `student_skills` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -175,9 +175,9 @@ CREATE TABLE IF NOT EXISTS `student_skills` (
   UNIQUE KEY `uq_student_skill` (`student_id`,`skill_id`),
   KEY `skill_id` (`skill_id`),
   KEY `assessed_by` (`assessed_by`),
-  CONSTRAINT `1` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`) ON DELETE CASCADE,
-  CONSTRAINT `2` FOREIGN KEY (`skill_id`) REFERENCES `skills` (`skill_id`) ON DELETE CASCADE,
-  CONSTRAINT `3` FOREIGN KEY (`assessed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL
+  FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`skill_id`) REFERENCES `skills` (`skill_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`assessed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS `students` (
   `student_id` int(11) NOT NULL AUTO_INCREMENT,
@@ -192,8 +192,8 @@ CREATE TABLE IF NOT EXISTS `students` (
   UNIQUE KEY `registration_no` (`registration_no`),
   KEY `cbc_level_id` (`cbc_level_id`),
   KEY `fk_students_programme` (`programme_code`),
-  CONSTRAINT `1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
-  CONSTRAINT `2` FOREIGN KEY (`cbc_level_id`) REFERENCES `cbc_levels` (`level_id`) ON DELETE SET NULL,
+  FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`cbc_level_id`) REFERENCES `cbc_levels` (`level_id`) ON DELETE SET NULL,
   CONSTRAINT `fk_students_programme` FOREIGN KEY (`programme_code`) REFERENCES `programmes` (`code`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS `sync_log` (
