@@ -22,6 +22,7 @@ const PERMISSIONS = [
         'university.sync'   => 'Sync university data and choose which programmes use the system',
         'users.manage'      => 'Assign roles to staff and deactivate accounts',
         'roles.manage'      => 'Create and edit roles and their permissions',
+        'system.view'       => 'View system health and the error log',
     ],
 ];
 

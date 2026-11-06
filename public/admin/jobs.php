@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../src/config/app.php';
 require_once __DIR__ . '/../../src/utils/auth.php';
 require_once __DIR__ . '/../../src/utils/JobApi.php';
+require_once __DIR__ . '/../../src/utils/Competency.php';
 requirePermission('jobs.manage');
 
 $db = Database::getConnection();
@@ -10,22 +11,24 @@ $error = '';
 
 // Handle fetch from API
 if (isset($_POST['fetch'])) {
+    set_time_limit(0); // fetching plus scoring every student against the new jobs can take a while
     $query = trim($_POST['query'] ?: 'software developer');
     $country = trim($_POST['country'] ?: 'ug');
-    $api = new JobApi();
-    $result = $api->fetchJobs($query, $country);
+    $result = (new JobApi())->fetchJobs($query, $country);
 
     if (!$result['success']) {
         $error = $result['error'];
     } else {
         $storeResult = JobApi::storeJobs($result['jobs']);
         if ($storeResult['success']) {
-            $message = 'Fetched and stored ' . count($result['jobs']) . ' jobs, ' . $storeResult['stored'] . ' saved with skill mappings.';
-            if (!$api->isConfigured()) {
-                $message .= ' (Using sample data — set RAPIDAPI_KEY env for live data)';
+            $scored = Competency::scoreJobs($storeResult['job_ids']);
+            $message = 'Fetched ' . count($result['jobs']) . ' jobs: ' . $storeResult['stored'] . ' new (the rest were already here).'
+                     . ($storeResult['stored'] ? " $scored students scored against the new jobs." : '');
+            if (!empty($result['sample'])) {
+                $message .= ' These are SAMPLE jobs: RAPIDAPI_KEY is not set, so the live API was not used.';
             }
         } else {
-            $error = $storeResult['error'];
+            $error = 'Jobs were fetched but could not be saved: ' . $storeResult['error'];
         }
     }
 }
@@ -36,12 +39,13 @@ if (isset($_POST['add_manual'])) {
         'title' => $_POST['title'],
         'company' => $_POST['company'],
         'description' => $_POST['description'],
-        'url' => $_POST['url'] ?? '#',
+        'url' => $_POST['url'] ?: '#',
         'source' => 'Manual',
     ];
     $result = JobApi::storeJobs([$job]);
     if ($result['success']) {
-        $message = 'Job added manually.';
+        Competency::scoreJobs($result['job_ids']);
+        $message = $result['stored'] ? 'Job added and every student scored against it.' : 'A job with that title and company already exists.';
     } else {
         $error = $result['error'];
     }

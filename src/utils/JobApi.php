@@ -18,11 +18,21 @@ class JobApi {
         if ($this->isConfigured()) {
             return $this->fetchFromApi($query, $country, $numPages);
         }
-        return $this->getSampleJobs();
+        app_log('warning', 'RAPIDAPI_KEY is not set; using sample jobs instead of the live API');
+        return ['success' => true, 'jobs' => $this->getSampleJobs()['jobs'], 'sample' => true];
+    }
+
+    /** One small live request, for the System health page. */
+    public function testConnection(): array {
+        if (!$this->isConfigured()) return ['success' => false, 'error' => 'RAPIDAPI_KEY is not set in .env, so the app uses sample jobs.'];
+        $started = microtime(true);
+        $r = $this->fetchFromApi('software developer', 'ug', 1);
+        $r['ms'] = (int)round((microtime(true) - $started) * 1000);
+        return $r;
     }
 
     private function fetchFromApi(string $query, string $country, int $numPages): array {
-        $url = "https://{$this->apiHost}/search-v2?query=" . urlencode($query) . "&num_pages=$numPages&country=$country&date_posted=all";
+        $url = "https://{$this->apiHost}/search-v2?query=" . urlencode($query) . "&num_pages=$numPages&country=" . urlencode($country) . "&date_posted=all";
 
         $ch = curl_init();
         curl_setopt_array($ch, [
@@ -32,23 +42,37 @@ class JobApi {
                 'x-rapidapi-host: ' . $this->apiHost,
                 'x-rapidapi-key: ' . $this->apiKey,
             ],
+            CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_TIMEOUT => 30,
         ]);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
         curl_close($ch);
 
-        if ($httpCode !== 200) {
-            return ['success' => false, 'error' => "API returned HTTP $httpCode"];
+        // Say exactly what went wrong: network problems, the API's own message, or an unexpected reply
+        if ($response === false || $httpCode === 0) {
+            $error = "Couldn't reach the job API ($curlError). Check the server's internet access, DNS and firewall.";
+        } elseif ($httpCode !== 200) {
+            $apiMessage = json_decode((string)$response, true)['message'] ?? trim(substr(strip_tags((string)$response), 0, 200));
+            $hint = match (true) {
+                $httpCode === 401 || $httpCode === 403 => ' Check RAPIDAPI_KEY and that this key is subscribed to the JSearch API on RapidAPI.',
+                $httpCode === 429 => ' The monthly or per-second request limit was reached; wait or upgrade the RapidAPI plan.',
+                $httpCode >= 500 => ' The job API is having problems; try again later.',
+                default => '',
+            };
+            $error = "The job API returned HTTP $httpCode: " . rtrim($apiMessage ?: 'no message', '.') . '.' . $hint;
+        } else {
+            $data = json_decode((string)$response, true);
+            if (!isset($data['data']['jobs']) || !is_array($data['data']['jobs'])) {
+                $error = 'The job API replied, but not in the expected format (no data.jobs). The API may have changed.';
+            } else {
+                return ['success' => true, 'jobs' => $this->normalizeJobs($data['data']['jobs'])];
+            }
         }
-
-        $data = json_decode($response, true);
-        if (!$data || !isset($data['data']['jobs'])) {
-            return ['success' => false, 'error' => 'Invalid API response'];
-        }
-
-        return ['success' => true, 'jobs' => $this->normalizeJobs($data['data']['jobs'])];
+        app_log('error', 'Job API request failed', ['http' => $httpCode, 'error' => $error, 'query' => $query, 'country' => $country]);
+        return ['success' => false, 'error' => $error, 'http' => $httpCode];
     }
 
     private function normalizeJobs(array $rawJobs): array {
@@ -130,7 +154,7 @@ class JobApi {
     public static function storeJobs(array $jobs): array {
         $db = Database::getConnection();
         $stored = 0;
-        $errors = [];
+        $newIds = [];
 
         $skillCache = [];
         $stmt = $db->query("SELECT skill_id, skill_name, category FROM skills");
@@ -154,6 +178,7 @@ class JobApi {
 
                 $insertJob->execute([$job['title'], $job['company'], $job['description'], $job['url'], $job['source']]);
                 $jobId = (int) $db->lastInsertId();
+                $newIds[] = $jobId;
 
                 $matchedSkills = self::extractSkills($job['description'], $skillCache);
                 foreach ($matchedSkills as $skillId => $weight) {
@@ -166,10 +191,11 @@ class JobApi {
             $db->commit();
         } catch (Exception $e) {
             $db->rollBack();
+            app_log('error', 'Saving fetched jobs failed', ['error' => $e->getMessage()]);
             return ['success' => false, 'error' => $e->getMessage()];
         }
 
-        return ['success' => true, 'stored' => $stored];
+        return ['success' => true, 'stored' => $stored, 'job_ids' => $newIds];
     }
 
     private static function extractSkills(string $description, array $skillCache): array {

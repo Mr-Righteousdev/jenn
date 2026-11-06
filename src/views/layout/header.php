@@ -2,23 +2,27 @@
 require_once __DIR__ . '/../../utils/ui.php';
 $navUser = isLoggedIn() ? getCurrentUser() : null;
 $currentPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-// Links depend on what the signed-in user may do; admin pages go under a "Manage" menu
+// Students get a few links in the top bar. Staff get a sidebar, grouped, showing only what their role allows.
 $navLinks = [];
-$manageLinks = [];
+$sidebar = [];
 if ($navUser && isStudent()) {
     $navLinks = ['/dashboard.php' => 'Overview', '/profile.php' => 'My skills', '/jobs.php' => 'Job matches', '/report.php' => 'My report'];
 } elseif ($navUser) {
-    foreach (['/dashboard.php' => ['Overview', null], '/lecturer/reports.php' => ['Students', 'students.view'],
-              '/lecturer/assess.php' => ['Evidence', 'evidence.record'], '/admin/curriculum.php' => ['Curriculum', 'curriculum.manage'],
-              '/admin/jobs.php' => ['Jobs', 'jobs.manage'], '/admin/reports.php' => ['Analytics', 'analytics.view']] as $href => [$label, $perm]) {
-        if (!$perm || can($perm)) $navLinks[$href] = $label;
-    }
-    foreach (['/admin/university.php' => ['University data', 'university.sync'], '/admin/skills.php' => ['Skills', 'skills.manage'],
-              '/admin/cbc_levels.php' => ['CBC levels', 'cbc.manage'], '/admin/users.php' => ['Users', 'users.manage'],
-              '/admin/roles.php' => ['Roles and permissions', 'roles.manage']] as $href => [$label, $perm]) {
-        if (can($perm)) $manageLinks[$href] = $label;
+    $groups = [
+        '' => [['/dashboard.php', 'Overview', 'home', null]],
+        'Students' => [['/lecturer/reports.php', 'Students', 'users', 'students.view'], ['/lecturer/assess.php', 'Practical evidence', 'clipboard', 'evidence.record']],
+        'Curriculum and jobs' => [['/admin/curriculum.php', 'Curriculum mapping', 'layers', 'curriculum.manage'], ['/admin/jobs.php', 'Jobs', 'briefcase', 'jobs.manage'],
+                                  ['/admin/reports.php', 'Analytics', 'chart', 'analytics.view']],
+        'Framework' => [['/admin/skills.php', 'Skills', 'award', 'skills.manage'], ['/admin/cbc_levels.php', 'CBC levels', 'sliders', 'cbc.manage']],
+        'Administration' => [['/admin/university.php', 'University data', 'database', 'university.sync'], ['/admin/users.php', 'Users', 'user-cog', 'users.manage'],
+                             ['/admin/roles.php', 'Roles and permissions', 'shield', 'roles.manage'], ['/admin/health.php', 'System health', 'activity', 'system.view']],
+    ];
+    foreach ($groups as $title => $items) {
+        $allowed = array_values(array_filter($items, fn($i) => $i[3] === null || can($i[3])));
+        if ($allowed) $sidebar[$title] = $allowed;
     }
 }
+$hasSidebar = (bool)$sidebar;
 $initials = $navUser ? strtoupper(implode('', array_map(fn($w) => $w[0], array_slice(preg_split('/\s+/', trim($navUser['name'])), 0, 2)))) : '';
 ?>
 <!DOCTYPE html>
@@ -42,39 +46,10 @@ $initials = $navUser ? strtoupper(implode('', array_map(fn($w) => $w[0], array_s
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-    <link rel="stylesheet" href="<?= BASE_URL ?>/css/style.css">
+    <link rel="stylesheet" href="<?= asset('/css/style.css') ?>">
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark app-nav sticky-top">
-    <div class="container">
-        <a class="navbar-brand app-brand" href="<?= BASE_URL ?>/<?= $navUser ? 'dashboard.php' : '' ?>">
-            <span class="app-mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
-            </span>
-            Competency<span>System</span>
-        </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu" aria-controls="navMenu" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navMenu">
-            <ul class="navbar-nav me-auto app-links">
-                <?php foreach ($navLinks as $href => $label): $active = str_ends_with($currentPath, $href); ?>
-                    <li class="nav-item">
-                        <a class="nav-link<?= $active ? ' active' : '' ?>" href="<?= BASE_URL . $href ?>"<?= $active ? ' aria-current="page"' : '' ?>><?= $label ?></a>
-                    </li>
-                <?php endforeach; ?>
-                <?php if ($manageLinks): $manageActive = (bool)array_filter(array_keys($manageLinks), fn($h) => str_ends_with($currentPath, $h)); ?>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle<?= $manageActive ? ' active' : '' ?>" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Manage</a>
-                        <ul class="dropdown-menu app-submenu">
-                            <?php foreach ($manageLinks as $href => $label): ?>
-                                <li><a class="dropdown-item<?= str_ends_with($currentPath, $href) ? ' active' : '' ?>" href="<?= BASE_URL . $href ?>"><?= $label ?></a></li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </li>
-                <?php endif; ?>
-            </ul>
-            <?php if ($navUser): ?>
+<?php $userMenu = function () use ($navUser, $initials) { ?>
                 <div class="dropdown">
                     <button class="user-btn" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
                         <span class="avatar" aria-hidden="true"><?= htmlspecialchars($initials) ?></span>
@@ -112,10 +87,61 @@ $initials = $navUser ? strtoupper(implode('', array_map(fn($w) => $w[0], array_s
                         </a>
                     </div>
                 </div>
-            <?php else: ?>
-                <a class="btn btn-sm btn-light" href="<?= BASE_URL ?>/login.php">Sign in</a>
-            <?php endif; ?>
-        </div>
+<?php }; ?>
+<nav class="navbar navbar-dark app-nav sticky-top<?= $hasSidebar ? ' has-sidebar' : ' navbar-expand-lg' ?>">
+    <div class="<?= $hasSidebar ? 'container-fluid app-nav-inner' : 'container' ?>">
+        <?php if ($hasSidebar): ?>
+            <button class="sidebar-toggle d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#appSidebar" aria-controls="appSidebar" aria-label="Open menu"><?= icon('menu', 20) ?></button>
+        <?php endif; ?>
+        <a class="navbar-brand app-brand" href="<?= BASE_URL ?>/<?= $navUser ? 'dashboard.php' : '' ?>">
+            <span class="app-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+            </span>
+            Competency<span>System</span>
+        </a>
+        <?php if ($hasSidebar): ?>
+            <div class="ms-auto"><?php $userMenu(); ?></div>
+        <?php else: ?>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu" aria-controls="navMenu" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navMenu">
+                <ul class="navbar-nav me-auto app-links">
+                    <?php foreach ($navLinks as $href => $label): $active = str_ends_with($currentPath, $href); ?>
+                        <li class="nav-item">
+                            <a class="nav-link<?= $active ? ' active' : '' ?>" href="<?= BASE_URL . $href ?>"<?= $active ? ' aria-current="page"' : '' ?>><?= $label ?></a>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php if ($navUser): $userMenu(); else: ?>
+                    <a class="btn btn-sm btn-light" href="<?= BASE_URL ?>/login.php">Sign in</a>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </div>
 </nav>
+<?php if ($hasSidebar): ?>
+<div class="app-shell">
+    <aside class="offcanvas-lg offcanvas-start app-sidebar" tabindex="-1" id="appSidebar" aria-labelledby="appSidebarLabel">
+        <div class="offcanvas-header d-lg-none">
+            <strong id="appSidebarLabel">Menu</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#appSidebar" aria-label="Close menu"></button>
+        </div>
+        <nav class="sidebar-nav" aria-label="Main">
+            <?php foreach ($sidebar as $title => $items): ?>
+                <?php if ($title !== ''): ?><div class="sidebar-group"><?= $title ?></div><?php endif; ?>
+                <?php foreach ($items as [$href, $label, $ic]): $active = str_ends_with($currentPath, $href); ?>
+                    <a class="sidebar-link<?= $active ? ' active' : '' ?>" href="<?= BASE_URL . $href ?>"<?= $active ? ' aria-current="page"' : '' ?>><?= icon($ic, 18) ?><span><?= $label ?></span></a>
+                <?php endforeach; ?>
+            <?php endforeach; ?>
+        </nav>
+        <div class="sidebar-foot">
+            <span><?= htmlspecialchars($navUser['role_label']) ?></span>
+            <span>Data for <?= htmlspecialchars(scopeLabel()) ?></span>
+        </div>
+    </aside>
+    <div class="app-content">
+        <div class="container-fluid app-main">
+<?php else: ?>
 <div class="container app-main">
+<?php endif; ?>

@@ -26,7 +26,7 @@ $status = ['ready' => 'Ready', 'close' => 'Close', 'far' => 'Stretch'];
     <title>Readiness report · <?= htmlspecialchars($st['name']) ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="<?= BASE_URL ?>/css/style.css">
+    <link rel="stylesheet" href="<?= asset('/css/style.css') ?>">
     <style>body { padding: 2rem 0; } .page-actions { display: none; }</style>
 </head>
 <body>
