@@ -230,17 +230,16 @@ $lastSyncAt = $staffOverview ? $db->query("SELECT finished_at FROM sync_log WHER
     $scored = "jr.job_id IN (SELECT job_id FROM job_skills)";
 
     // Best match per student (with the job it came from)
-    $best = $q("SELECT u.name, s.registration_no, s.course, jr.match_score, j.title
-                FROM job_readiness jr
-                JOIN (SELECT student_id, MAX(match_score) m FROM job_readiness GROUP BY student_id) b
-                  ON b.student_id = jr.student_id AND b.m = jr.match_score
-                JOIN students s ON s.student_id = jr.student_id
-                JOIN users u ON u.user_id = s.user_id
-                JOIN jobs j ON j.job_id = jr.job_id
-                WHERE $scored AND " . studentScope('jr.student_id') . "
-                  AND EXISTS (SELECT 1 FROM student_skills ss WHERE ss.student_id = jr.student_id) -- students with no results yet have nothing to score
-                GROUP BY jr.student_id
-                ORDER BY jr.match_score DESC");
+    $best = $q("SELECT name, registration_no, course, match_score, title FROM (
+                    SELECT u.name, s.registration_no, s.course, jr.match_score, j.title,
+                           ROW_NUMBER() OVER (PARTITION BY jr.student_id ORDER BY jr.match_score DESC, jr.job_id) AS rn
+                    FROM job_readiness jr
+                    JOIN students s ON s.student_id = jr.student_id
+                    JOIN users u ON u.user_id = s.user_id
+                    JOIN jobs j ON j.job_id = jr.job_id
+                    WHERE $scored AND " . studentScope('jr.student_id') . "
+                      AND EXISTS (SELECT 1 FROM student_skills ss WHERE ss.student_id = jr.student_id) -- students with no results yet have nothing to score
+                ) ranked WHERE rn = 1 ORDER BY match_score DESC");
     $jobReady  = count(array_filter($best, fn($r) => round($r['match_score']) >= 70));
     // Charts and the leaderboard show the top students; the full list is on the Students page
     $topBest   = array_slice($best, 0, 15);
@@ -248,8 +247,8 @@ $lastSyncAt = $staffOverview ? $db->query("SELECT finished_at FROM sync_log WHER
 
     $byCategory = $q("SELECT sk.category, ROUND(AVG(ss.skill_level)) lvl FROM student_skills ss JOIN skills sk USING(skill_id) WHERE " . studentScope('ss.student_id') . " GROUP BY sk.category ORDER BY lvl DESC");
     $demand     = $q("SELECT sk.skill_name, COUNT(*) n, (SELECT ROUND(AVG(ss2.skill_level)) FROM student_skills ss2 WHERE ss2.skill_id = sk.skill_id AND " . studentScope('ss2.student_id') . ") lvl
-                      FROM job_skills js JOIN skills sk USING(skill_id) GROUP BY sk.skill_id ORDER BY n DESC, sk.skill_name LIMIT 8");
-    $levels     = $q("SELECT cl.level_name, COUNT(s.student_id) n FROM cbc_levels cl LEFT JOIN students s ON s.cbc_level_id = cl.level_id AND " . studentScope() . " GROUP BY cl.level_id ORDER BY cl.min_score");
+                      FROM job_skills js JOIN skills sk USING(skill_id) GROUP BY sk.skill_id, sk.skill_name ORDER BY n DESC, sk.skill_name LIMIT 8");
+    $levels     = $q("SELECT cl.level_name, COUNT(s.student_id) n FROM cbc_levels cl LEFT JOIN students s ON s.cbc_level_id = cl.level_id AND " . studentScope() . " GROUP BY cl.level_id, cl.level_name, cl.min_score ORDER BY cl.min_score");
     $noLevel    = (int)$one("SELECT COUNT(*) FROM students s WHERE s.cbc_level_id IS NULL AND " . studentScope());
     $histRows   = array_column($q("SELECT LEAST(FLOOR(match_score/10), 9) b, COUNT(*) n FROM job_readiness jr WHERE $scored AND " . studentScope('jr.student_id') . " GROUP BY b"), 'n', 'b');
     $hist       = array_map(fn($b) => (int)($histRows[$b] ?? 0), range(0, 9));

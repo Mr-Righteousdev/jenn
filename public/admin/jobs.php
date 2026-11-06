@@ -59,13 +59,14 @@ if (isset($_GET['delete'])) {
 }
 
 $jobs = $db->query("
-    SELECT j.*,
-           COUNT(DISTINCT js.id) AS skill_count,
-           GROUP_CONCAT(DISTINCT CONCAT(sk.skill_name, '|', js.weight) ORDER BY js.weight DESC SEPARATOR '||') AS matched_skills_raw
+    SELECT j.*, COALESCE(m.skill_count, 0) AS skill_count, m.matched_skills_raw
     FROM jobs j
-    LEFT JOIN job_skills js ON j.job_id = js.job_id
-    LEFT JOIN skills sk ON js.skill_id = sk.skill_id
-    GROUP BY j.job_id
+    LEFT JOIN (
+        SELECT js.job_id, COUNT(DISTINCT js.id) AS skill_count,
+               GROUP_CONCAT(DISTINCT CONCAT(sk.skill_name, '|', js.weight) ORDER BY js.weight DESC SEPARATOR '||') AS matched_skills_raw
+        FROM job_skills js JOIN skills sk ON js.skill_id = sk.skill_id
+        GROUP BY js.job_id
+    ) m ON m.job_id = j.job_id
     ORDER BY j.scraped_date DESC, j.job_id DESC
 ")->fetchAll();
 
@@ -98,8 +99,8 @@ $onlyUnmapped = ($_GET['filter'] ?? '') === 'unmapped';
         <p>Postings that students are matched against. A job only produces useful scores once skills are mapped to it.</p>
     </div>
     <div class="page-actions">
-        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="tab" data-bs-target="#manual" type="button"><?= icon('plus', 14) ?> Add manually</button>
-        <button class="btn btn-primary btn-sm" data-bs-toggle="tab" data-bs-target="#fetch" type="button">Fetch from API</button>
+        <button class="btn btn-outline-primary btn-sm" data-open-tab="#manual" type="button"><?= icon('plus', 14) ?> Add manually</button>
+        <button class="btn btn-primary btn-sm" data-open-tab="#fetch" type="button">Fetch from API</button>
     </div>
 </header>
 <?= flash($message) ?>
@@ -231,6 +232,11 @@ $onlyUnmapped = ($_GET['filter'] ?? '') === 'unmapped';
 <script>
 (() => {
     const search = document.getElementById('jobSearch'), only = document.getElementById('onlyUnmapped');
+    // The header buttons open a tab by clicking the matching tab button (Bootstrap tabs only work inside the tab bar)
+    document.querySelectorAll('[data-open-tab]').forEach(b => b.addEventListener('click', () => {
+        const tab = document.querySelector('.seg-tabs [data-bs-target="' + b.dataset.openTab + '"]');
+        if (tab) { bootstrap.Tab.getOrCreateInstance(tab).show(); tab.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    }));
     if (!search) return;
     const apply = () => {
         const q = search.value.trim().toLowerCase(); let shown = 0;
@@ -242,10 +248,6 @@ $onlyUnmapped = ($_GET['filter'] ?? '') === 'unmapped';
         document.getElementById('noJobs').hidden = shown > 0;
     };
     search.addEventListener('input', apply); only.addEventListener('change', apply); apply();
-    // Keep the segmented tabs in sync when a header button switches panes
-    document.querySelectorAll('[data-bs-toggle="tab"]').forEach(b => b.addEventListener('shown.bs.tab', () => {
-        document.querySelectorAll('.seg-tabs button').forEach(t => t.classList.toggle('active', t.dataset.bsTarget === b.dataset.bsTarget));
-    }));
 })();
 </script>
 

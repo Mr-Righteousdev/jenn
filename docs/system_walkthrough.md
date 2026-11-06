@@ -150,10 +150,10 @@ WHERE TRIM(progcode) = '02305' GROUP BY 1, 2;                           -- most 
 
 **Do:**
 1. Sign in as the **admin** (`admin@jenn.edu`).
-2. Go to **Manage → University data**.
+2. Go to **Administration → University data**.
 3. Read the status card: *source `localhost/campus_dynamics` · read-only*.
 4. Expand **Faculty of Science and Technology**. Note the 5 IT programmes switched **In use**.
-5. Click **Sync now**. Wait (about 3 minutes) and read the result message.
+5. Click **Sync now**. Wait a few seconds and read the result message.
 
 **Look for:**
 - All 6 faculties and 97 programmes are listed, even though only 5 programmes are in use.
@@ -285,7 +285,7 @@ skill after each sync or mapping change, and stores the result in `student_skill
 **Do:**
 1. As `<STRONG>`: **My skills** shows the CBC scale with a marker at their average level, e.g.
    *Proficient · Average level 82*.
-2. As admin: **Manage → CBC levels** shows the four bands and how many students are in each.
+2. As admin: **Framework → CBC levels** shows the four bands and how many students are in each.
 
 **Look for:** the bands (Novice 0–40, Intermediate 41–70, Proficient 71–90, Expert 91–100) and the count
 of students per band.
@@ -404,7 +404,7 @@ doesn't invent a profile from nothing.
 
 **Do:**
 1. In the private window, sign in as `<STAFF>` (Lecturer role).
-2. Notice the navbar: only **Overview, Students, Evidence**.
+2. Notice the sidebar: only **Overview, Students, Practical evidence**.
 3. **Evidence** → search for `<STRONG>` → find **Communication**:
    - Note *From results* and *Current level*.
    - Enter **95** with the note "Internship supervisor report". **Save evidence.**
@@ -454,9 +454,9 @@ is addressed here, particularly by the category-versus-demand comparison and "Sk
 **Goal:** see that each person gets the right view, and nothing more.
 
 **Do:**
-1. As admin: **Manage → Roles and permissions**. Read the matrix. Each role has ticked permissions and a
+1. As admin: **Administration → Roles and permissions**. Read the matrix. Each role has ticked permissions and a
    **Sees data for** setting (whole university or their faculty).
-2. **Manage → Users:** change `<STAFF>` from *Lecturer* to **Dean** and save.
+2. **Administration → Users:** change `<STAFF>` from *Lecturer* to **Dean** and save.
 3. In the staff window, refresh. **Curriculum** and **Analytics** appear, and the overview says *"How
    students in Faculty of Science and Technology…"*, limited to their faculty.
 4. **Try to cheat:** still as the staff member, type `http://localhost:8000/admin/users.php` in the
@@ -578,7 +578,7 @@ your own walkthrough says otherwise.
 | Staff appear by username, not full name | The university's admin system only stores usernames | No. A staff list with names was requested from IT |
 | Some students can't sign in | Only 273 of 608 have a portal account in this copy of the database | No. It reflects the data |
 | Names display in title case though the university stores capitals | The display tidies ALL-CAPS names for readability | No. Stored data is unchanged |
-| A full sync takes about 3 minutes | It recalculates 608 profiles and 12,160 match scores | Acceptable now; incremental sync would speed it up |
+| A full sync takes a few seconds | It recalculates 608 profiles and 12,160 match scores in memory | No; incremental sync would speed it up |
 | The *Students* page (lecturer reports) looks older than the rest | It hasn't been restyled yet | Cosmetic |
 
 ---

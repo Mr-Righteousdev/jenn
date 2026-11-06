@@ -108,7 +108,7 @@ class MatchingEngine {
             FROM job_skills js
             JOIN skills sk ON js.skill_id = sk.skill_id
             WHERE js.job_id = ?
-            ORDER BY js.weight DESC
+            ORDER BY js.weight DESC, js.skill_id
         ");
         $stmt->execute([$jobId]);
         $requirements = $stmt->fetchAll();
@@ -144,6 +144,94 @@ class MatchingEngine {
         usort($gaps, fn($a, $b) => $b['weight'] <=> $a['weight']);
 
         return array_slice($gaps, 0, 5);
+    }
+
+    /**
+     * Scores many students against many jobs at once (null = all). Same formulas as calculateReadiness(),
+     * but it loads levels, requirements and job texts once and detects each job's skills once, instead of
+     * running several queries for every student-job pair. That keeps "Fetch from API" and a full sync
+     * within the web server's time limit.
+     */
+    public function scoreMany(?array $studentIds = null, ?array $jobIds = null): int {
+        $db = $this->db;
+        $list = fn(array $ids) => implode(',', array_map('intval', $ids)) ?: '0';
+        $sWhere = $studentIds === null ? '' : ' WHERE student_id IN (' . $list($studentIds) . ')';
+        $jWhere = $jobIds === null ? '' : ' WHERE job_id IN (' . $list($jobIds) . ')';
+
+        $students = $db->query("SELECT student_id FROM students$sWhere")->fetchAll(PDO::FETCH_COLUMN);
+        $jobs = $db->query("SELECT job_id, title, description FROM jobs$jWhere")->fetchAll();
+        if (!$students || !$jobs) return 0;
+
+        $levels = [];
+        foreach ($db->query("SELECT student_id, skill_id, skill_level FROM student_skills$sWhere") as $r) {
+            $levels[$r['student_id']][$r['skill_id']] = $r['skill_level'];
+        }
+        $skills = $db->query("SELECT skill_id, skill_name FROM skills")->fetchAll();
+        $reqs = [];
+        foreach ($db->query("SELECT js.job_id, js.skill_id, js.weight, sk.skill_name, sk.category FROM job_skills js
+                             JOIN skills sk ON js.skill_id = sk.skill_id" . ($jobIds === null ? '' : ' WHERE js.job_id IN (' . $list($jobIds) . ')') . "
+                             ORDER BY js.job_id, js.weight DESC, js.skill_id") as $r) {
+            $reqs[$r['job_id']][] = $r;
+        }
+
+        // Per job, once: which framework skills its title and description mention (as in keywordMatch)
+        $mentions = [];
+        foreach ($jobs as $j) {
+            $mentions[$j['job_id']] = null;
+            if (empty($j['description'])) continue;
+            $text = strtolower($j['title'] . ' ' . strip_tags($j['description']));
+            $mentions[$j['job_id']] = [];
+            foreach ($skills as $sk) {
+                if (preg_match('/(?<![\w+#])' . preg_quote(strtolower($sk['skill_name']), '/') . '(?![\w+#])/', $text)) {
+                    $mentions[$j['job_id']][] = $sk['skill_id'];
+                }
+            }
+        }
+
+        $rows = [];
+        foreach ($students as $sid) {
+            $lv = $levels[$sid] ?? [];
+            foreach ($jobs as $j) {
+                $jid = $j['job_id'];
+                $req = $reqs[$jid] ?? [];
+
+                $sum = 0; $total = 0;                                   // weightedScore()
+                foreach ($req as $r) {
+                    $w = (float)($r['weight'] ?: 0.5);
+                    $sum += ($lv[$r['skill_id']] ?? 0) * $w;
+                    $total += $w;
+                }
+                $weighted = ($req && $total != 0) ? $sum / $total : 0;
+
+                $keyword = 0;                                           // keywordMatch()
+                if ($mentions[$jid]) {
+                    $found = array_map(fn($id) => (int)($lv[$id] ?? 0), $mentions[$jid]);
+                    $keyword = round(array_sum($found) / count($found), 2);
+                }
+
+                $gaps = [];                                             // gapAnalysis()
+                foreach ($req as $r) {
+                    $level = $lv[$r['skill_id']] ?? 0;
+                    if ($level < self::GAP_THRESHOLD) {
+                        $gaps[] = ['skill_id' => $r['skill_id'], 'skill_name' => $r['skill_name'], 'category' => $r['category'],
+                                   'weight' => (float)$r['weight'], 'current_level' => $level, 'gap' => self::GAP_THRESHOLD - $level,
+                                   'severity' => $level < 30 ? 'high' : ($level < 50 ? 'medium' : 'low')];
+                    }
+                }
+                usort($gaps, fn($a, $b) => $b['weight'] <=> $a['weight']);
+
+                $rows[] = [$sid, $jid, round(($weighted * 0.6) + ($keyword * 0.4), 2), round($weighted, 2), round($keyword, 2), json_encode(array_slice($gaps, 0, 5))];
+            }
+        }
+
+        foreach (array_chunk($rows, 500) as $chunk) {
+            $db->prepare("INSERT INTO job_readiness (student_id, job_id, match_score, weighted_score, keyword_score, gap_analysis, report_generated)
+                          VALUES " . implode(',', array_fill(0, count($chunk), '(?, ?, ?, ?, ?, ?, CURDATE())')) . "
+                          ON DUPLICATE KEY UPDATE match_score = VALUES(match_score), weighted_score = VALUES(weighted_score),
+                          keyword_score = VALUES(keyword_score), gap_analysis = VALUES(gap_analysis), report_generated = CURDATE()")
+               ->execute(array_merge(...$chunk));
+        }
+        return count($rows);
     }
 
     public function getCbcLevel(int $score): array {

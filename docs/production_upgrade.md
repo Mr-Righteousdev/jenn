@@ -190,7 +190,7 @@ IT programmes switched on
 Drafted skills for 300 course units
 Synced 608 students, 47 staff accounts, 5881 results; 608 profiles computed
 ```
-It takes a few minutes.
+It takes under a minute.
 
 ### 5.5 Replace the default admin password immediately
 
@@ -203,7 +203,7 @@ vps$ ADMIN_PW="$P" php -r 'require "src/config/app.php"; require "src/config/dat
 vps$ unset P
 ```
 
-### 5.6 Let "Sync now" run for a few minutes, and refresh PHP
+### 5.6 Give long requests room, and refresh PHP
 
 In your nginx site config (`/etc/nginx/sites-available/jenn`), inside `location ~ \.php$ { … }`, add:
 
@@ -226,8 +226,8 @@ The site is now up on the new version.
 
 - [ ] Home page loads; sign in as `admin@jenn.edu` with the **new** password.
 - [ ] **Overview** shows about 608 students and the charts.
-- [ ] **Manage → University data:** "Up to date", source `localhost/campus_dynamics`, 5 IT programmes in use.
-- [ ] **Curriculum**, **Jobs**, **Analytics**, **Manage → Users** (47 staff), **Manage → Roles** (5 roles) all open.
+- [ ] **Administration → University data:** "Up to date", source `localhost/campus_dynamics`, 5 IT programmes in use.
+- [ ] **Curriculum**, **Jobs**, **Analytics**, **Administration → Users** (47 staff), **Administration → Roles** (5 roles) all open.
 - [ ] `sudo tail -n 30 /var/log/nginx/error.log` shows no new PHP errors.
 
 ### 6.2 Student and staff sign-in

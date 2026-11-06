@@ -21,7 +21,7 @@ $stats = [
         SELECT sk.skill_name, sk.category, COUNT(ss.id) AS times_assessed, ROUND(AVG(ss.skill_level), 1) AS avg_level
         FROM student_skills ss JOIN skills sk ON ss.skill_id = sk.skill_id
         WHERE " . $inScope('ss.student_id') . "
-        GROUP BY ss.skill_id ORDER BY times_assessed DESC LIMIT 10
+        GROUP BY ss.skill_id, sk.skill_name, sk.category ORDER BY times_assessed DESC LIMIT 10
     ")->fetchAll(),
     'avg_match' => $db->query("SELECT ROUND(AVG(match_score), 1) FROM job_readiness jr WHERE jr.job_id IN (SELECT job_id FROM job_skills) AND " . $inScope('jr.student_id'))->fetchColumn(),
     'jobs_by_source' => $db->query("SELECT source, COUNT(*) AS cnt FROM jobs GROUP BY source ORDER BY cnt DESC")->fetchAll(),
@@ -31,7 +31,7 @@ $stats = [
                SUM(jr.match_score >= 70) AS ready
         FROM jobs j JOIN job_readiness jr ON j.job_id = jr.job_id
         WHERE j.job_id IN (SELECT job_id FROM job_skills) AND " . $inScope('jr.student_id') . "
-        GROUP BY j.job_id ORDER BY avg_score DESC LIMIT 8
+        GROUP BY j.job_id, j.title, j.company ORDER BY avg_score DESC LIMIT 8
     ")->fetchAll(),
     'grades' => $db->query("SELECT grade, COUNT(*) AS cnt FROM student_results r WHERE " . $inScope('r.student_id') . " GROUP BY grade ORDER BY FIELD(grade, 'A', 'B+', 'B', 'C+', 'C', 'D+', 'D', 'F'), grade")->fetchAll(),
     'by_year' => $db->query("

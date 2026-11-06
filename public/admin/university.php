@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = 'Programme updated. Run a sync to bring in its students and results.';
     }
     if (isset($_POST['sync'])) {
-        // A full sync takes minutes; don't let PHP's default 30-second limit (or a closed tab) cut it off.
+        // A full sync takes seconds, but don't let PHP's default 30-second limit (or a closed tab) cut a large one off.
         // nginx's fastcgi_read_timeout must also allow it (see docs/production_upgrade.md).
         set_time_limit(0);
         ignore_user_abort(true);

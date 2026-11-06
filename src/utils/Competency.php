@@ -69,23 +69,14 @@ class Competency {
             throw $t;
         }
 
-        // ponytail: re-matches every job for each student (fine for hundreds of students); batch per job if it grows
-        $engine = new MatchingEngine();
-        $jobs = $db->query("SELECT job_id FROM jobs")->fetchAll(PDO::FETCH_COLUMN);
-        foreach ($ids as $sid) {
-            foreach ($jobs as $jid) $engine->calculateReadiness((int)$sid, (int)$jid);
-        }
+        (new MatchingEngine())->scoreMany($studentIds === null ? null : $ids);
         return count($ids);
     }
 
     /** Scores every student against the given (new) jobs, so they show up straight away without a full sync. */
     public static function scoreJobs(array $jobIds): int {
         if (!$jobIds) return 0;
-        $engine = new MatchingEngine();
-        $students = Database::getConnection()->query("SELECT student_id FROM students")->fetchAll(PDO::FETCH_COLUMN);
-        foreach ($students as $sid) {
-            foreach ($jobIds as $jid) $engine->calculateReadiness((int)$sid, (int)$jid);
-        }
-        return count($students);
+        (new MatchingEngine())->scoreMany(null, $jobIds);
+        return (int)Database::getConnection()->query("SELECT COUNT(*) FROM students")->fetchColumn();
     }
 }

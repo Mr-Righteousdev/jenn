@@ -19,7 +19,7 @@ $students = $db->query("
     JOIN users u ON s.user_id = u.user_id
     LEFT JOIN student_skills ss ON s.student_id = ss.student_id
     WHERE " . studentScope() . "
-    GROUP BY s.student_id
+    GROUP BY s.student_id, s.registration_no, s.course, s.year_of_study, u.name, u.email
     ORDER BY u.name
 ")->fetchAll();
 

@@ -97,8 +97,8 @@ connector, `src/utils/University.php`, over a read-only connection.
 
 1. **Sync** (`src/utils/Sync.php`) copies the university structure (all faculties, programmes, course
    units and curricula) and the students and results of programmes switched on, into this app's
-   database. Run it from **Admin → University data** or from cron.
-2. **Curriculum mapping** (**Admin → Curriculum**) records which skills each course unit builds.
+   database. Run it from **Administration → University data** or from cron.
+2. **Curriculum mapping** (**Curriculum mapping**) records which skills each course unit builds.
 3. **Competency profiles** (`src/utils/Competency.php`) turn marks into skill levels:
    the weighted average of a student's best marks in the units that build each skill.
    Optional lecturer practical evidence counts for 25%.

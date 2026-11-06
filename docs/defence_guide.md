@@ -260,7 +260,7 @@ have, like the curriculum mapping and job matches."
 
 ### 2.5 End-to-end data flow (walk through this slowly if asked "how does it work?")
 
-1. **Sync** (Manage → University data → *Sync now*, or a nightly scheduled job):
+1. **Sync** (Administration → University data → *Sync now*, or a nightly scheduled job):
    1. Copy **all** faculties, programmes, course units and each programme's curriculum.
       - Each unit's year and semester are worked out from when students actually took it, because the
         university's curriculum table files most units under Year 1 Semester 1.
@@ -276,7 +276,7 @@ have, like the curriculum mapping and job matches."
 4. **Pages read the stored results.** Viewing a page never recalculates or changes data. That keeps
    pages fast and results consistent between users.
 5. **Triggers to recalculate:**
-   - a sync (about 3 minutes for everything)
+   - a sync (about 5 seconds for everything)
    - saving a curriculum mapping (recalculates only the students who took that unit)
    - saving lecturer evidence (recalculates that one student)
 
@@ -752,7 +752,7 @@ Sign in as the **super admin**.
 - **Say:** "On the left is what our students are good at; on the right is what employers ask for."
 
 ### Scene 3: University data (1.5 minutes)
-Open **Manage → University data**.
+Open **Administration → University data**.
 - **Show:** sync status (source `campus_dynamics`, read-only), then faculties → programmes, with the 5 IT
   programmes switched on.
 - **Say:** "All faculties and programmes come from the university's system. We switch on the programmes
@@ -792,7 +792,7 @@ In a private window, sign in as the **strong Year 3 student**.
 
 ### Scene 6: Lecturer evidence (1.5 minutes)
 In a private window, sign in as the **staff account** (Lecturer role by default).
-- **Show:** the navbar only has Overview, Students and Evidence.
+- **Show:** the sidebar only has Overview, Students and Practical evidence.
 - **Say:** "Staff see only their faculty's students and only what their role allows."
 - **Show:** Evidence: pick a student, add an evidence level with the note "Internship supervisor report",
   then save.
@@ -800,10 +800,10 @@ In a private window, sign in as the **staff account** (Lecturer role by default)
   can't show. It counts for 25% and is labelled with their name."
 
 ### Scene 7: Roles and permissions (2 minutes)
-As admin, open **Manage → Roles and permissions**.
+As admin, open **Administration → Roles and permissions**.
 - **Show:** the matrix: rows are permissions, columns are roles, with "Sees data for" per role.
 - **Say:** "Access is role-based and editable. Each role has permissions and a data scope."
-- **Show:** Manage → Users. Change the staff account to *Dean* and save.
+- **Show:** Administration → Users. Change the staff account to *Dean* and save.
 - **Say:** "Assigning a role is one click. You can't remove the last super admin, can't change your own
   role, and only a super admin can create another."
 - **Optional:** refresh the staff window. Curriculum and Analytics appear, limited to their faculty.
@@ -942,8 +942,10 @@ and they get a clear "university system unavailable" message. The local emergenc
 in, and a failed sync is recorded with its error.
 
 **Q11. How does the system scale?**
-- **Today:** 608 students × 20 jobs = 12,160 match scores. A full sync takes about 3 minutes, and
-  recalculating every profile about 30 seconds. Recalculation happens only on sync or edits, never on
+- **Today:** 608 students × 20 jobs = 12,160 match scores. A full sync takes about 5 seconds, and
+  scoring every student against 10 new jobs about half a second. It was about 3 minutes until matching
+  was rewritten to load the data once and score in memory, with identical results (checked pair by
+  pair). Recalculation happens only on sync or edits, never on
   page views, so pages load in well under a second.
 - **At university scale:** incremental sync (only changed results) and running the sync as a background
   job overnight.
@@ -1259,7 +1261,7 @@ asked, then stop.
 | Match scores | 12,160 (608 × 20 jobs) |
 | Jobs | 20 tracked, 13 with detected skills |
 | Curriculum mapping | 300 units drafted, 89 taken units still unmapped |
-| Sync / recompute time | about 3 minutes / about 30 seconds |
+| Sync / scoring time | about 5 seconds for a full sync; about 0.5 s to score 10 new jobs |
 | Roles | 5 built-in + custom; 11 permissions; 2 scopes (whole university, faculty) |
 | Grading scale | A 80+ · B+ 75 · B 70 · C+ 65 · C 60 · D+ 55 · D 50 · F below 50 (same as the university's) |
 
@@ -1312,7 +1314,7 @@ php src/scripts/seed.php                                # admin, sync, switch on
 ```
 
 ### The day before
-- [ ] Run a sync (Manage → University data → Sync now) and confirm "Up to date".
+- [ ] Run a sync (Administration → University data → Sync now) and confirm "Up to date".
 - [ ] Sign in once with every account in `demo_accounts.local.md`.
 - [ ] Check that the staff demo account has the **Lecturer** role (reset it if you practised promotions).
 - [ ] Deactivate the leftover test admin `admin@test.com` on the Users page.

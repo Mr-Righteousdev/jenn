@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $message = 'Level deleted';
 }
 
-$levels = $db->query("SELECT cl.*, COUNT(s.student_id) AS students FROM cbc_levels cl LEFT JOIN students s ON s.cbc_level_id = cl.level_id GROUP BY cl.level_id ORDER BY cl.min_score")->fetchAll();
+$levels = $db->query("SELECT cl.*, (SELECT COUNT(*) FROM students s WHERE s.cbc_level_id = cl.level_id) AS students FROM cbc_levels cl ORDER BY cl.min_score")->fetchAll();
 $unassigned = (int)$db->query("SELECT COUNT(*) FROM students WHERE cbc_level_id IS NULL")->fetchColumn();
 // One-hue ramp, light to dark, for the ordinal levels
 $ramp = ['#9FD6D2', '#4DB3AC', '#008C85', '#0A5F5A', '#063D3A'];
