@@ -1,170 +1,121 @@
 <?php
 require_once __DIR__ . '/../src/config/app.php';
 require_once __DIR__ . '/../src/utils/auth.php';
-require_once __DIR__ . '/../src/utils/MatchingEngine.php';
-requireLogin();
+require_once __DIR__ . '/../src/utils/StudentProfile.php';
+requireStudent();
 
-$user = getCurrentUser();
-$db = Database::getConnection();
-
-if ($user['role'] !== 'student') {
-    die('Students only.');
-}
-
-$stmt = $db->prepare("SELECT student_id FROM students WHERE user_id = ?");
-$stmt->execute([$user['user_id']]);
-$student = $stmt->fetch();
-if (!$student) die('Profile not found.');
-$studentId = $student['student_id'];
-
-$engine = new MatchingEngine();
-
-// Get all readiness scores
-$scores = $db->prepare("
-    SELECT jr.*, j.title, j.company, j.source
-    FROM job_readiness jr
-    JOIN jobs j ON jr.job_id = j.job_id
-    WHERE jr.student_id = ?
-    ORDER BY jr.match_score DESC
-");
-$scores->execute([$studentId]);
-$scores = $scores->fetchAll();
-
+$profile = StudentProfile::forUser($_SESSION['user_id']);
+if (!$profile) die('Your student profile has not been synced yet. Contact the career office.');
+$st = $profile->student;
+$skills = $profile->skills();
+$withLevel = array_filter($skills, fn($s) => $s['level'] !== null);
+$avgSkill = $withLevel ? (int)round(array_sum(array_column($withLevel, 'level')) / count($withLevel)) : null;
+$scorable = array_values(array_filter($profile->matches(), fn($m) => $m['required'] > 0));
+$ready = count(array_filter($scorable, fn($m) => StudentProfile::band($m['match_score']) === 'ready'));
+$growth = $profile->growthAreas();
 $print = isset($_GET['print']);
+$status = ['ready' => 'Ready', 'close' => 'Close', 'far' => 'Stretch'];
 ?>
 <?php if (!$print): ?>
 <?php require_once __DIR__ . '/../src/views/layout/header.php'; ?>
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>My Readiness Report</h2>
-    <a href="?print=1" class="btn btn-outline-primary" target="_blank">Print PDF</a>
-</div>
 <?php else: ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
-    <title>Readiness Report — <?= htmlspecialchars($user['name']) ?></title>
+    <title>Readiness report · <?= htmlspecialchars($st['name']) ?></title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { padding: 2rem; font-size: 14px; }
-        @media print { .no-print { display: none !important; } }
-        .badge { font-size: 11px; }
-    </style>
+    <link rel="stylesheet" href="<?= BASE_URL ?>/css/style.css">
+    <style>body { padding: 2rem 0; } .page-actions { display: none; }</style>
 </head>
 <body>
-<div class="no-print mb-3">
-    <button onclick="window.print()" class="btn btn-primary">Print</button>
-    <a href="?" class="btn btn-secondary">Back</a>
-</div>
+<div class="container">
+<?php require_once __DIR__ . '/../src/utils/ui.php'; ?>
+<div class="no-print d-flex gap-2 mb-3"><button onclick="window.print()" class="btn btn-primary btn-sm">Print or save as PDF</button><a href="?" class="btn btn-outline-secondary btn-sm">Back</a></div>
 <?php endif; ?>
 
-<?php
-$stmt = $db->prepare("SELECT s.*, cl.level_name, u.name, u.email FROM students s JOIN users u ON s.user_id = u.user_id LEFT JOIN cbc_levels cl ON s.cbc_level_id = cl.level_id WHERE s.student_id = ?");
-$stmt->execute([$studentId]);
-$profile = $stmt->fetch();
-?>
-
-<div class="card mb-4">
-    <div class="card-body">
-        <div class="row">
-            <div class="col">
-                <h3><?= htmlspecialchars($profile['name']) ?></h3>
-                <p class="mb-1"><?= htmlspecialchars($profile['registration_no']) ?> | <?= htmlspecialchars($profile['course']) ?> Year <?= $profile['year_of_study'] ?></p>
-                <p class="mb-0 text-muted small">Report generated: <?= date('F j, Y') ?></p>
-            </div>
-            <div class="col-auto text-end">
-                <?php
-                $avgScore = !empty($scores) ? round(array_sum(array_column($scores, 'match_score')) / count($scores), 1) : 0;
-                $topScore = !empty($scores) ? round(max(array_column($scores, 'match_score')), 1) : 0;
-                $cbc = $engine->getCbcLevel($avgScore);
-                ?>
-                <div class="display-3 fw-bold text-<?= $avgScore >= 70 ? 'success' : ($avgScore >= 40 ? 'warning' : 'danger') ?>"><?= $avgScore ?>%</div>
-                <span class="badge bg-primary">Avg Readiness — <?= $cbc['level_name'] ?></span>
-            </div>
-        </div>
+<header class="page-head report-head">
+    <div>
+        <h1>Job readiness report</h1>
+        <p><strong><?= htmlspecialchars(nice($st['name'])) ?></strong> · <?= htmlspecialchars($st['registration_no']) ?> · <?= htmlspecialchars(nice($st['programme_name'] ?? $st['course'])) ?>, year <?= $st['year_of_study'] ?><br>
+           <?= htmlspecialchars(nice($st['faculty'] ?? '')) ?> · generated <?= date('j F Y') ?></p>
     </div>
-</div>
+    <div class="page-actions"><a href="?print=1" target="_blank" class="btn btn-primary btn-sm"><?= icon('print', 14) ?> Print or save as PDF</a></div>
+</header>
 
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-body">
-                <h5 class="card-title">Summary</h5>
-                <table class="table table-sm mb-0">
-                    <tr><td>Jobs Available</td><td><strong><?= $db->query("SELECT COUNT(*) FROM jobs")->fetchColumn() ?></strong></td></tr>
-                    <tr><td>Jobs Scored</td><td><strong><?= count($scores) ?></strong></td></tr>
-                    <tr><td>Top Match</td><td><strong><?= $topScore ?>%</strong></td></tr>
-                    <?php $skillCount = $db->prepare("SELECT COUNT(*) FROM student_skills WHERE student_id = ?"); $skillCount->execute([$studentId]); ?>
-                    <tr><td>Skills Assessed</td><td><strong><?= $skillCount->fetchColumn() ?></strong></td></tr>
-                </table>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-body">
-                <h5 class="card-title">Top Recommendations</h5>
-                <?php
-                $recs = $db->prepare("SELECT r.*, sk.skill_name FROM recommendations r JOIN skills sk ON r.skill_id = sk.skill_id WHERE r.student_id = ? AND r.is_actioned = 0 LIMIT 5");
-                $recs->execute([$studentId]);
-                $recs = $recs->fetchAll();
-                ?>
-                <?php if (empty($recs)): ?>
-                    <p class="text-muted mb-0">No recommendations yet. Run a job match first.</p>
-                <?php else: ?>
-                    <ul class="list-unstyled mb-0">
-                        <?php foreach ($recs as $r): ?>
-                            <li class="mb-1 small">
-                                <span class="badge bg-<?= $r['rec_type'] === 'course' ? 'primary' : ($r['rec_type'] === 'online_resource' ? 'success' : 'secondary') ?> me-1"><?= str_replace('_', ' ', $r['rec_type']) ?></span>
-                                <?= htmlspecialchars($r['rec_title']) ?>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-</div>
+<section class="kpis kpis-4" aria-label="Summary">
+    <div class="kpi"><span class="kpi-label">CBC level</span><span class="kpi-value kpi-word"><?= htmlspecialchars($st['level_name'] ?? 'Not set') ?></span></div>
+    <div class="kpi"><span class="kpi-label">Average skill level</span><span class="kpi-value"><?= $avgSkill ?? '—' ?><small>/100</small></span></div>
+    <div class="kpi"><span class="kpi-label">Ready to apply</span><span class="kpi-value"><?= $ready ?><small>/<?= count($scorable) ?> jobs</small></span></div>
+    <div class="kpi"><span class="kpi-label">Best match</span><span class="kpi-value"><?= $scorable ? round($scorable[0]['match_score']) : '—' ?><small>%</small></span></div>
+</section>
 
-<div class="card">
-    <div class="card-body">
-        <h5 class="card-title">Job Readiness Scores</h5>
-        <?php if (empty($scores)): ?>
-            <p class="text-muted mb-0">No jobs scored yet. Visit <a href="<?= BASE_URL ?>/jobs.php">Job Matching</a> to get started.</p>
-        <?php else: ?>
-            <div class="table-responsive">
-                <table class="table table-sm">
-                    <thead>
+<div class="row g-3">
+    <div class="col-lg-6">
+        <section class="panel h-100">
+            <h2 class="panel-title">Competency profile</h2>
+            <table class="table data-table mb-0">
+                <thead><tr><th>Skill</th><th class="text-end">Level</th><th>Based on</th></tr></thead>
+                <tbody>
+                    <?php $cat = null; foreach ($skills as $s): ?>
+                        <?php if ($s['category'] !== $cat): $cat = $s['category']; ?><tr class="group-row"><td colspan="3"><?= htmlspecialchars($cat) ?></td></tr><?php endif; ?>
                         <tr>
-                            <th>Job Title</th>
-                            <th>Company</th>
-                            <th>Weighted</th>
-                            <th>Keyword</th>
-                            <th>Hybrid</th>
-                            <th>CBC Level</th>
+                            <td><?= htmlspecialchars($s['skill_name']) ?></td>
+                            <td class="text-end num"><strong><?= $s['level'] ?? '—' ?></strong></td>
+                            <td class="small text-muted">
+                                <?= $s['sources'] ? implode(', ', array_map(fn($u) => $u['code'], $s['sources'])) : '' ?>
+                                <?= $s['evidence_items'] ? ($s['sources'] ? ' + ' : '') . 'lecturer evidence' : '' ?>
+                                <?= !$s['sources'] && !$s['evidence_items'] ? ($s['upcoming'] ? 'not yet taught' : 'not in curriculum') : '' ?>
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($scores as $s): ?>
-                            <?php $lvl = $engine->getCbcLevel($s['match_score']); ?>
-                            <tr>
-                                <td><?= htmlspecialchars($s['title']) ?></td>
-                                <td><?= htmlspecialchars($s['company']) ?></td>
-                                <td><?= $s['weighted_score'] ?>%</td>
-                                <td><?= $s['keyword_score'] ?>%</td>
-                                <td><strong class="text-<?= $s['match_score'] >= 70 ? 'success' : ($s['match_score'] >= 40 ? 'warning' : 'danger') ?>"><?= $s['match_score'] ?>%</strong></td>
-                                <td><span class="badge bg-primary"><?= $lvl['level_name'] ?></span></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php endif; ?>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </section>
+    </div>
+    <div class="col-lg-6">
+        <section class="panel mb-3">
+            <h2 class="panel-title">Top job matches</h2>
+            <table class="table data-table mb-0">
+                <thead><tr><th>Job</th><th class="text-end">Match</th><th>Status</th></tr></thead>
+                <tbody>
+                    <?php foreach (array_slice($scorable, 0, 10) as $m): $band = StudentProfile::band($m['match_score']); ?>
+                        <tr>
+                            <td><strong><?= htmlspecialchars($m['title']) ?></strong><span class="d-block small text-muted"><?= htmlspecialchars($m['company']) ?></span></td>
+                            <td class="text-end num"><strong><?= round($m['match_score']) ?>%</strong></td>
+                            <td><span class="tag <?= $band === 'ready' ? 'tag-brand' : ($band === 'far' ? 'tag-warn' : '') ?>"><?= $status[$band] ?></span></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php if (!$scorable): ?><tr><td colspan="3" class="empty">No scored jobs yet.</td></tr><?php endif; ?>
+                </tbody>
+            </table>
+        </section>
+        <section class="panel">
+            <h2 class="panel-title">Development plan</h2>
+            <?php if (!$growth): ?>
+                <p class="mb-0 text-muted">No gaps across the closest matches.</p>
+            <?php else: ?>
+                <ol class="plan">
+                    <?php foreach ($growth as $g): ?>
+                        <li>
+                            <strong><?= htmlspecialchars($g['skill_name']) ?></strong> <span class="text-muted small">from <?= $g['level'] ?? 0 ?> to <?= MatchingEngine::GAP_THRESHOLD ?>+ · needed by <?= $g['jobs'] ?> top matches</span>
+                            <ul>
+                                <?php foreach (StudentProfile::learnLinks($g) as $l): ?>
+                                    <li><?= $l['type'] === 'course' ? htmlspecialchars($l['title']) . ' (' . htmlspecialchars($l['detail']) . ')' : '<a href="' . htmlspecialchars($l['url']) . '" target="_blank" rel="noopener">' . htmlspecialchars($l['title']) . '</a>' ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </li>
+                    <?php endforeach; ?>
+                </ol>
+            <?php endif; ?>
+        </section>
     </div>
 </div>
+<p class="small text-muted mt-3">Skill levels are computed from university results using the curriculum mapping, with lecturer practical evidence counting for 25% where recorded. Match scores combine skills fit (60%) and job description fit (40%).</p>
 
 <?php if ($print): ?>
-</body></html>
+</div></body></html>
 <?php else: ?>
 <?php require_once __DIR__ . '/../src/views/layout/footer.php'; ?>
 <?php endif; ?>

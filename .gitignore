@@ -1,1 +1,7 @@
 .env
+database/backups/
+passbook.sql
+*.sql.gz
+*.local.md
+.codex/
+.github/hooks/

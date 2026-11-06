@@ -467,8 +467,7 @@ footer {
       <li><a href="#how-it-works">How it Works</a></li>
       <li><a href="#features">Features</a></li>
       <li><a href="#case-study">Case Study</a></li>
-      <li><a href="/login.php">Login</a></li>
-      <li><a href="/register.php" class="nav-cta">Get Started</a></li>
+      <li><a href="/login.php" class="nav-cta">Sign in</a></li>
     </ul>
   </div>
 </nav>
@@ -484,7 +483,7 @@ footer {
         with the Competency-Based Curriculum (CBC) framework.
       </p>
       <div class="hero-actions">
-        <a href="/register.php" class="btn btn-primary">Get Started Free</a>
+        <a href="/login.php" class="btn btn-primary">Sign in with your portal account</a>
         <a href="#how-it-works" class="btn btn-outline">How It Works</a>
       </div>
     </div>
@@ -731,8 +730,7 @@ footer {
     <h2>Ready to transform how your university measures readiness?</h2>
     <p>Join St. Lawrence University and other institutions in bridging the gap between academic achievement and career success.</p>
     <div class="hero-actions" style="justify-content: center;">
-      <a href="/register.php" class="btn btn-primary">Create Free Account</a>
-      <a href="/login.php" class="btn btn-outline">Login</a>
+      <a href="/login.php" class="btn btn-primary">Sign in</a>
     </div>
   </div>
 </section>
@@ -742,8 +740,7 @@ footer {
     <div class="footer-inner">
       <span>&copy; 2026 Competency Profiling System. St. Lawrence University, Uganda.</span>
       <div class="footer-links">
-        <a href="/login.php">Login</a>
-        <a href="/register.php">Register</a>
+        <a href="/login.php">Sign in</a>
       </div>
     </div>
   </div>

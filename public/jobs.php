@@ -1,225 +1,155 @@
 <?php
 require_once __DIR__ . '/../src/config/app.php';
 require_once __DIR__ . '/../src/utils/auth.php';
-require_once __DIR__ . '/../src/utils/MatchingEngine.php';
-requireLogin();
+require_once __DIR__ . '/../src/utils/StudentProfile.php';
+requireStudent();
 
-$user = getCurrentUser();
-$db = Database::getConnection();
+$profile = StudentProfile::forUser($_SESSION['user_id']);
+if (!$profile) die('Your student profile has not been synced yet. Contact the career office.');
 
-if ($user['role'] !== 'student') {
-    die('This page is for students only.');
-}
-
-$stmt = $db->prepare("SELECT student_id FROM students WHERE user_id = ?");
-$stmt->execute([$user['user_id']]);
-$student = $stmt->fetch();
-if (!$student) {
-    die('Student profile not found.');
-}
-$studentId = $student['student_id'];
-
-$engine = new MatchingEngine();
-
-// Calculate readiness for a specific job
-$selectedJobId = $_GET['job_id'] ?? null;
-$result = null;
-if ($selectedJobId) {
-    $result = $engine->calculateReadiness($studentId, (int)$selectedJobId);
-    $cbcLevel = $engine->getCbcLevel($result['hybrid_score']);
-    $engine->generateRecommendations($studentId, (int)$selectedJobId);
-}
-
-// Get all jobs with their match scores
-$jobs = $db->query("
-    SELECT j.*,
-           jr.match_score, jr.weighted_score, jr.keyword_score, jr.report_generated
-    FROM jobs j
-    LEFT JOIN job_readiness jr ON j.job_id = jr.job_id AND jr.student_id = $studentId
-    ORDER BY jr.match_score DESC, j.job_id DESC
-")->fetchAll();
-
-// Get student skills for keyword visualization
-$stmt = $db->prepare("
-    SELECT sk.skill_name, sk.category, ss.skill_level
-    FROM student_skills ss
-    JOIN skills sk ON ss.skill_id = sk.skill_id
-    WHERE ss.student_id = ?
-    ORDER BY sk.category
-");
-$stmt->execute([$studentId]);
-$studentSkills = $stmt->fetchAll();
+// Scores are recalculated whenever results sync or evidence changes, so this page only reads them
+$matches = $profile->matches();
+$scorable = array_values(array_filter($matches, fn($m) => $m['required'] > 0));
+$selectedId = (int)($_GET['job_id'] ?? ($scorable[0]['job_id'] ?? 0));
+$job = null;
+foreach ($matches as $m) if ((int)$m['job_id'] === $selectedId) $job = $m;
+$reqs = $job ? $profile->requirements($selectedId) : [];
+$gaps = array_filter($reqs, fn($r) => !$r['meets']);
+$counts = ['ready' => 0, 'close' => 0, 'far' => 0];
+foreach ($scorable as $m) $counts[StudentProfile::band($m['match_score'])]++;
+$weightLabel = fn(float $w) => $w >= 0.9 ? 'Essential' : ($w >= 0.65 ? 'Important' : ($w >= 0.4 ? 'Useful' : 'Nice to have'));
 ?>
 <?php require_once __DIR__ . '/../src/views/layout/header.php'; ?>
 
-<div class="row mb-4">
-    <div class="col">
-        <h2>Job Matching</h2>
-        <p class="text-muted">See how your skills align with real job opportunities.</p>
+<header class="page-head">
+    <div>
+        <h1>Job matches</h1>
+        <p>How your skill profile fits real job postings. 70% or more means you're ready to apply.</p>
     </div>
-</div>
+</header>
 
-<div class="row">
-    <div class="col-md-4 mb-3">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Your Skills</h5>
-                <?php if (empty($studentSkills)): ?>
-                    <p class="text-muted">No skills assessed yet. Ask your lecturer to assess you.</p>
-                <?php else: ?>
-                    <div class="list-group list-group-flush">
-                        <?php foreach ($studentSkills as $sk): ?>
-                            <div class="list-group-item px-0 d-flex justify-content-between align-items-center">
-                                <div>
-                                    <strong><?= htmlspecialchars($sk['skill_name']) ?></strong>
-                                    <br><small class="text-muted"><?= htmlspecialchars($sk['category']) ?></small>
-                                </div>
-                                <span class="badge bg-<?= $sk['skill_level'] >= 70 ? 'success' : ($sk['skill_level'] >= 40 ? 'warning' : 'danger') ?> rounded-pill"><?= $sk['skill_level'] ?></span>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
+<div class="row g-3">
+    <div class="col-lg-5">
+        <section class="panel form-panel">
+            <div class="chips mb-2" role="group" aria-label="Filter jobs">
+                <button type="button" class="chip is-on" data-band="">All <span><?= count($scorable) ?></span></button>
+                <button type="button" class="chip" data-band="ready">Ready <span><?= $counts['ready'] ?></span></button>
+                <button type="button" class="chip" data-band="close">Close <span><?= $counts['close'] ?></span></button>
+                <button type="button" class="chip" data-band="far">Stretch <span><?= $counts['far'] ?></span></button>
             </div>
-        </div>
-    </div>
-
-    <div class="col-md-8">
-        <?php if ($result && $selectedJobId): ?>
-            <?php
-            $stmt = $db->prepare("SELECT * FROM jobs WHERE job_id = ?");
-            $stmt->execute([$selectedJobId]);
-            $selectedJob = $stmt->fetch();
-            ?>
-            <div class="card mb-3 border-<?= $result['hybrid_score'] >= 70 ? 'success' : ($result['hybrid_score'] >= 40 ? 'warning' : 'danger') ?>">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <h4 class="card-title"><?= htmlspecialchars($selectedJob['title']) ?></h4>
-                            <h6 class="text-muted"><?= htmlspecialchars($selectedJob['company']) ?></h6>
-                        </div>
-                        <div class="text-center">
-                            <div class="display-4 fw-bold text-<?= $result['hybrid_score'] >= 70 ? 'success' : ($result['hybrid_score'] >= 40 ? 'warning' : 'danger') ?>">
-                                <?= $result['hybrid_score'] ?>%
-                            </div>
-                            <span class="badge bg-<?= $cbcLevel['level_name'] === 'Expert' ? 'dark' : 'primary' ?>"><?= $cbcLevel['level_name'] ?></span>
-                        </div>
-                    </div>
-
-                    <div class="row mt-3 text-center">
-                        <div class="col">
-                            <small class="text-muted d-block">Weighted Skills</small>
-                            <strong><?= $result['weighted_score'] ?>%</strong>
-                            <div class="progress mt-1" style="height:4px">
-                                <div class="progress-bar bg-info" style="width:<?= $result['weighted_score'] ?>%"></div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <small class="text-muted d-block">Keyword Match</small>
-                            <strong><?= $result['keyword_score'] ?>%</strong>
-                            <div class="progress mt-1" style="height:4px">
-                                <div class="progress-bar bg-secondary" style="width:<?= $result['keyword_score'] ?>%"></div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <small class="text-muted d-block">Hybrid Score</small>
-                            <strong><?= $result['hybrid_score'] ?>%</strong>
-                            <div class="progress mt-1" style="height:4px">
-                                <div class="progress-bar bg-success" style="width:<?= $result['hybrid_score'] ?>%"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <?php if (!empty($result['gaps'])): ?>
-                <div class="card mb-3">
-                    <div class="card-body">
-                        <h5 class="card-title">Skill Gaps</h5>
-                        <p class="text-muted">Top missing skills to work on:</p>
-                        <?php foreach ($result['gaps'] as $gap): ?>
-                            <div class="d-flex align-items-center mb-2 p-2 bg-light rounded">
-                                <div class="flex-grow-1">
-                                    <strong><?= htmlspecialchars($gap['skill_name']) ?></strong>
-                                    <span class="badge bg-<?= $gap['severity'] === 'high' ? 'danger' : ($gap['severity'] === 'medium' ? 'warning' : 'info') ?> ms-2"><?= $gap['severity'] ?> gap</span>
-                                    <br><small class="text-muted">Current: <?= $gap['current_level'] ?>/100 &rarr; Need: 60+</small>
-                                </div>
-                                <span class="text-muted">Weight: <?= $gap['weight'] ?></span>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-
-                <?php
-                $stmt = $db->prepare("SELECT * FROM recommendations WHERE student_id = ? ORDER BY rec_type");
-                $stmt->execute([$studentId]);
-                $recs = $stmt->fetchAll();
-                ?>
-                <?php if (!empty($recs)): ?>
-                    <div class="card mb-3">
-                        <div class="card-body">
-                            <h5 class="card-title">Recommendations</h5>
-                            <div class="list-group">
-                                <?php foreach ($recs as $rec): ?>
-                                    <div class="list-group-item">
-                                        <div class="d-flex justify-content-between">
-                                            <div>
-                                                <span class="badge bg-<?= $rec['rec_type'] === 'course' ? 'primary' : ($rec['rec_type'] === 'online_resource' ? 'success' : 'secondary') ?> me-2">
-                                                    <?= str_replace('_', ' ', $rec['rec_type']) ?>
-                                                </span>
-                                                <strong><?= htmlspecialchars($rec['rec_title']) ?></strong>
-                                            </div>
-                                            <?php if ($rec['rec_link']): ?>
-                                                <a href="<?= htmlspecialchars($rec['rec_link']) ?>" target="_blank" class="btn btn-sm btn-outline-primary">Open</a>
-                                            <?php endif; ?>
-                                        </div>
-                                        <?php if ($rec['rec_description']): ?>
-                                            <p class="mb-0 mt-1 text-muted small"><?= htmlspecialchars($rec['rec_description']) ?></p>
-                                        <?php endif; ?>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    </div>
-                <?php endif; ?>
-            <?php else: ?>
-                <div class="card mb-3">
-                    <div class="card-body text-center text-success py-4">
-                        <h5>No critical skill gaps!</h5>
-                        <p class="mb-0">You meet the minimum requirements for this role.</p>
-                    </div>
-                </div>
+            <label class="search w-100 mb-2" style="max-width: none">
+                <?= icon('search') ?>
+                <input type="search" id="jobSearch" class="form-control" placeholder="Search jobs" aria-label="Search jobs">
+            </label>
+            <ul class="job-pick" id="jobList">
+                <?php foreach ($scorable as $m): $band = StudentProfile::band($m['match_score']); $sc = (int)round($m['match_score']); ?>
+                    <li data-band="<?= $band ?>" data-q="<?= htmlspecialchars(strtolower($m['title'] . ' ' . $m['company'])) ?>">
+                        <a href="?job_id=<?= $m['job_id'] ?>" class="<?= (int)$m['job_id'] === $selectedId ? 'is-current' : '' ?>">
+                            <span class="job-pick-text"><strong><?= htmlspecialchars($m['title']) ?></strong><span><?= htmlspecialchars($m['company']) ?></span></span>
+                            <span class="score-pill is-<?= $band ?>"><?= $sc ?>%</span>
+                        </a>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+            <div class="empty py-3" id="noJobs" hidden>No jobs match.</div>
+            <?php if (count($matches) > count($scorable)): ?>
+                <p class="small text-muted mt-2 mb-0"><?= count($matches) - count($scorable) ?> more postings can't be scored yet because their required skills haven't been set.</p>
             <?php endif; ?>
-        <?php endif; ?>
+        </section>
+    </div>
 
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Available Jobs</h5>
-                <?php if (empty($jobs)): ?>
-                    <p class="text-muted mb-0">No jobs loaded yet. Ask your admin to import jobs.</p>
+    <div class="col-lg-7">
+        <?php if (!$job): ?>
+            <section class="panel"><div class="empty">No scored jobs yet. Check back after the career office adds postings.</div></section>
+        <?php else: $sc = (int)round($job['match_score']); $band = StudentProfile::band($job['match_score']); ?>
+            <section class="panel mb-3">
+                <div class="match-head">
+                    <div>
+                        <h2 class="match-title"><?= htmlspecialchars($job['title']) ?></h2>
+                        <p class="text-muted mb-0"><?= htmlspecialchars($job['company']) ?> · <?= htmlspecialchars($job['source']) ?></p>
+                    </div>
+                    <div class="match-score is-<?= $band ?>">
+                        <strong><?= $sc ?><small>%</small></strong>
+                        <span><?= ['ready' => 'Ready to apply', 'close' => 'Close to ready', 'far' => 'Stretch role'][$band] ?></span>
+                    </div>
+                </div>
+                <div class="score-split">
+                    <div><span>Skills fit <em>60% of score</em></span><div class="meter"><span class="is-ready" style="width: <?= $job['weighted_score'] ?>%"></span></div><b><?= round($job['weighted_score']) ?>%</b></div>
+                    <div><span>Description fit <em>40% of score</em></span><div class="meter"><span class="is-ready" style="width: <?= $job['keyword_score'] ?>%"></span></div><b><?= round($job['keyword_score']) ?>%</b></div>
+                </div>
+                <?php if ($job['url'] && $job['url'] !== '#'): ?>
+                    <a href="<?= htmlspecialchars($job['url']) ?>" target="_blank" rel="noopener" class="btn btn-primary btn-sm mt-3"><?= icon('link', 14) ?> View posting</a>
+                <?php endif; ?>
+            </section>
+
+            <section class="panel mb-3">
+                <header class="panel-head"><div><h3>What this job asks for</h3><p>Your level against each required skill. The marker shows the 60 you need.</p></div></header>
+                <table class="table data-table mb-0">
+                    <thead><tr><th>Skill</th><th>Importance</th><th style="width: 42%">Your level</th><th></th></tr></thead>
+                    <tbody>
+                        <?php foreach ($reqs as $r): $lvl = $r['level']; ?>
+                            <tr>
+                                <td><strong><?= htmlspecialchars($r['skill_name']) ?></strong></td>
+                                <td class="small text-muted"><?= $weightLabel($r['weight']) ?></td>
+                                <td>
+                                    <div class="meter meter-target"><span class="<?= $r['meets'] ? 'is-ready' : '' ?>" style="width: <?= (int)$lvl ?>%"></span><i style="left: <?= MatchingEngine::GAP_THRESHOLD ?>%"></i></div>
+                                    <span class="meter-val"><?= $lvl ?? '—' ?></span>
+                                </td>
+                                <td class="text-end"><?= $r['meets'] ? '<span class="tag tag-brand">' . icon('check', 12) . ' Meets</span>' : '<span class="tag tag-warn">Gap of ' . (MatchingEngine::GAP_THRESHOLD - (int)$lvl) . '</span>' ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </section>
+
+            <section class="panel">
+                <?php if (!$gaps): ?>
+                    <div class="empty"><strong class="d-block text-body mb-1">No gaps for this role.</strong>You meet every skill it asks for.</div>
                 <?php else: ?>
-                    <div class="list-group">
-                        <?php foreach ($jobs as $job): ?>
-                            <a href="?job_id=<?= $job['job_id'] ?>" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center <?= $selectedJobId == $job['job_id'] ? 'active' : '' ?>">
-                                <div>
-                                    <strong><?= htmlspecialchars($job['title']) ?></strong>
-                                    <br><small><?= htmlspecialchars($job['company']) ?></small>
-                                </div>
-                                <div class="text-end">
-                                    <?php if ($job['match_score'] !== null): ?>
-                                        <span class="badge bg-<?= $job['match_score'] >= 70 ? 'success' : ($job['match_score'] >= 40 ? 'warning' : 'danger') ?> rounded-pill">
-                                            <?= $job['match_score'] ?>%
-                                        </span>
-                                    <?php else: ?>
-                                        <span class="badge bg-secondary">Not scored</span>
-                                    <?php endif; ?>
-                                </div>
-                            </a>
+                    <header class="panel-head"><div><h3>How to close the gaps</h3><p>Course units still ahead in your programme come first, then self-study.</p></div></header>
+                    <div class="gap-list">
+                        <?php foreach ($gaps as $g): ?>
+                            <div class="gap-item">
+                                <div class="gap-head"><strong><?= htmlspecialchars($g['skill_name']) ?></strong><span class="text-muted small">you're at <?= $g['level'] ?? 0 ?>, need <?= MatchingEngine::GAP_THRESHOLD ?></span></div>
+                                <ul>
+                                    <?php foreach (StudentProfile::learnLinks($g) as $l): ?>
+                                        <li class="learn-<?= $l['type'] ?>">
+                                            <?php if ($l['type'] === 'course'): ?>
+                                                <span class="tag tag-brand">Course unit</span> <?= htmlspecialchars($l['title']) ?> <span class="text-muted small">· <?= htmlspecialchars($l['detail']) ?></span>
+                                            <?php else: ?>
+                                                <span class="tag">Self-study</span> <a href="<?= htmlspecialchars($l['url']) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($l['title']) ?></a>
+                                            <?php endif; ?>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
-            </div>
-        </div>
+            </section>
+        <?php endif; ?>
     </div>
 </div>
+
+<script>
+(() => {
+    let band = '';
+    const search = document.getElementById('jobSearch');
+    const apply = () => {
+        const q = search.value.trim().toLowerCase(); let shown = 0;
+        document.querySelectorAll('#jobList li').forEach(li => {
+            const ok = (!band || li.dataset.band === band) && (!q || li.dataset.q.includes(q));
+            li.hidden = !ok; shown += ok;
+        });
+        document.getElementById('noJobs').hidden = shown > 0;
+    };
+    document.querySelectorAll('.chip[data-band]').forEach(c => c.addEventListener('click', () => {
+        band = c.dataset.band;
+        document.querySelectorAll('.chip[data-band]').forEach(x => x.classList.toggle('is-on', x === c));
+        apply();
+    }));
+    search.addEventListener('input', apply);
+})();
+</script>
 
 <?php require_once __DIR__ . '/../src/views/layout/footer.php'; ?>

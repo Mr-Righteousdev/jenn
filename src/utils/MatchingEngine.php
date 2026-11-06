@@ -3,6 +3,9 @@
 require_once __DIR__ . '/../config/database.php';
 
 class MatchingEngine {
+    // A required skill below this level counts as a gap
+    const GAP_THRESHOLD = 60;
+
     private PDO $db;
 
     public function __construct() {
@@ -72,50 +75,30 @@ class MatchingEngine {
         return ($weightedSum / $totalWeight);
     }
 
+    // Average student level across every skill the job's text mentions (missing skills count as 0).
+    // Measured against the job's needs, not the student's skill count, so students with fewer
+    // skills recorded aren't rewarded for it.
     private function keywordMatch(int $studentId, int $jobId): float {
         $stmt = $this->db->prepare("SELECT description, title FROM jobs WHERE job_id = ?");
         $stmt->execute([$jobId]);
         $job = $stmt->fetch();
         if (!$job || empty($job['description'])) return 0;
+        $text = strtolower($job['title'] . ' ' . strip_tags($job['description']));
 
         $stmt = $this->db->prepare("
-            SELECT sk.skill_name, ss.skill_level
-            FROM student_skills ss
-            JOIN skills sk ON ss.skill_id = sk.skill_id
-            WHERE ss.student_id = ?
+            SELECT sk.skill_name, COALESCE(ss.skill_level, 0) AS level
+            FROM skills sk LEFT JOIN student_skills ss ON ss.skill_id = sk.skill_id AND ss.student_id = ?
         ");
         $stmt->execute([$studentId]);
-        $studentSkills = $stmt->fetchAll();
-        if (empty($studentSkills)) return 0;
 
-        $description = strtolower(strip_tags($job['description']));
-
-        // Build a combined text from job title + description
-        $combined = strtolower($job['title']) . ' ' . $description;
-
-        $matchedCount = 0;
-        $totalSkills = count($studentSkills);
-        $weightedSum = 0;
-
-        foreach ($studentSkills as $sk) {
-            $skillName = strtolower($sk['skill_name']);
-            $level = $sk['skill_level'];
-
-            // Check if skill name appears as a whole phrase in the description
-            $pattern = '/' . preg_quote($skillName, '/') . '/i';
-            if (preg_match($pattern, $combined)) {
-                $matchedCount++;
-                $weightedSum += $level;
+        $levels = [];
+        foreach ($stmt->fetchAll() as $sk) {
+            // Whole-word match so "C" or "Java" don't fire inside other words
+            if (preg_match('/(?<![\w+#])' . preg_quote(strtolower($sk['skill_name']), '/') . '(?![\w+#])/', $text)) {
+                $levels[] = (int)$sk['level'];
             }
         }
-
-        if ($totalSkills === 0) return 0;
-
-        // Score = (matched skills / total skills) * (average level of matched skills / 100) * 100
-        $coverage = $matchedCount / $totalSkills;
-        $avgLevel = $matchedCount > 0 ? $weightedSum / $matchedCount : 0;
-
-        return round(($coverage * 0.5 + ($avgLevel / 100) * 0.5) * 100, 2);
+        return $levels ? round(array_sum($levels) / count($levels), 2) : 0;
     }
 
     public function gapAnalysis(int $studentId, int $jobId): array {
@@ -143,7 +126,7 @@ class MatchingEngine {
         $gaps = [];
         foreach ($requirements as $req) {
             $level = $studentSkills[$req['skill_id']] ?? 0;
-            $threshold = 60; // Below 60 is considered a gap
+            $threshold = self::GAP_THRESHOLD;
             if ($level < $threshold) {
                 $gaps[] = [
                     'skill_id' => $req['skill_id'],
@@ -171,47 +154,5 @@ class MatchingEngine {
             }
         }
         return ['level_name' => 'Unknown', 'description' => ''];
-    }
-
-    public function generateRecommendations(int $studentId, int $jobId): void {
-        $gaps = $this->gapAnalysis($studentId, $jobId);
-
-        // Clear old recommendations for this student/skill combo
-        $this->db->prepare("DELETE FROM recommendations WHERE student_id = ?")->execute([$studentId]);
-
-        $insertRec = $this->db->prepare("
-            INSERT INTO recommendations (student_id, skill_id, rec_type, rec_title, rec_link, rec_description)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ");
-
-        foreach ($gaps as $gap) {
-            $skill = $gap['skill_name'];
-            $skillId = $gap['skill_id'];
-
-            // Course recommendation
-            $insertRec->execute([
-                $studentId, $skillId, 'course',
-                "Course: $skill Fundamentals",
-                null,
-                "Enroll in a course covering $skill basics and advanced topics to close this gap.",
-            ]);
-
-            // Online resource
-            $searchQuery = urlencode("learn $skill programming tutorial");
-            $insertRec->execute([
-                $studentId, $skillId, 'online_resource',
-                "YouTube: $skill Tutorial",
-                "https://www.youtube.com/results?search_query=$searchQuery",
-                "Watch tutorials on $skill to build practical skills.",
-            ]);
-
-            // Description
-            $insertRec->execute([
-                $studentId, $skillId, 'skill_description',
-                "About $skill",
-                null,
-                "$skill is a key competency for this role. Focus on building hands-on projects to strengthen this area.",
-            ]);
-        }
     }
 }

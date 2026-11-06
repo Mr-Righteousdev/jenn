@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../../src/config/app.php';
 require_once __DIR__ . '/../../src/utils/auth.php';
 require_once __DIR__ . '/../../src/utils/MatchingEngine.php';
-requireRole('lecturer');
+requirePermission('students.view');
 
 $db = Database::getConnection();
 $engine = new MatchingEngine();
@@ -18,6 +18,7 @@ $students = $db->query("
     FROM students s
     JOIN users u ON s.user_id = u.user_id
     LEFT JOIN student_skills ss ON s.student_id = ss.student_id
+    WHERE " . studentScope() . "
     GROUP BY s.student_id
     ORDER BY u.name
 ")->fetchAll();
@@ -34,6 +35,7 @@ $catStats = $db->query("
     SELECT sk.category, COUNT(DISTINCT ss.student_id) AS student_count, ROUND(AVG(ss.skill_level), 1) AS avg_level
     FROM student_skills ss
     JOIN skills sk ON ss.skill_id = sk.skill_id
+    WHERE " . studentScope('ss.student_id') . "
     GROUP BY sk.category
     ORDER BY avg_level DESC
 ")->fetchAll();
@@ -115,7 +117,7 @@ $print = isset($_GET['print']);
             <div class="card-body">
                 <h5 class="card-title">CBC Level Distribution</h5>
                 <?php
-                $levels = $db->query("SELECT level_name, COUNT(*) AS cnt FROM (SELECT (SELECT cl.level_name FROM cbc_levels cl WHERE cl.min_score <= ROUND(AVG(ss.skill_level), 0) AND cl.max_score >= ROUND(AVG(ss.skill_level), 0) LIMIT 1) AS level_name FROM student_skills ss GROUP BY ss.student_id) t GROUP BY level_name ORDER BY cnt DESC")->fetchAll();
+                $levels = $db->query("SELECT level_name, COUNT(*) AS cnt FROM (SELECT (SELECT cl.level_name FROM cbc_levels cl WHERE cl.min_score <= ROUND(AVG(ss.skill_level), 0) AND cl.max_score >= ROUND(AVG(ss.skill_level), 0) LIMIT 1) AS level_name FROM student_skills ss WHERE " . studentScope('ss.student_id') . " GROUP BY ss.student_id) t GROUP BY level_name ORDER BY cnt DESC")->fetchAll();
                 ?>
                 <?php if (empty($levels)): ?>
                     <p class="text-muted mb-0">No data yet.</p>

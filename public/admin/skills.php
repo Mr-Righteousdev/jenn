@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../../src/config/app.php';
 require_once __DIR__ . '/../../src/utils/auth.php';
-requireRole('admin');
+requirePermission('skills.manage');
 
 $db = Database::getConnection();
 $message = '';
@@ -24,7 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $message = 'Skill deleted';
 }
 
-$skills = $db->query("SELECT * FROM skills ORDER BY category, skill_name")->fetchAll();
+$skills = $db->query("SELECT sk.*,
+        (SELECT COUNT(*) FROM job_skills js WHERE js.skill_id = sk.skill_id) AS jobs,
+        (SELECT ROUND(AVG(skill_level)) FROM student_skills ss WHERE ss.skill_id = sk.skill_id) AS avg_level
+    FROM skills sk ORDER BY category, skill_name")->fetchAll();
+$catCounts = array_count_values(array_column($skills, 'category'));
 $editSkill = null;
 if ($action === 'edit' && isset($_GET['id'])) {
     $stmt = $db->prepare("SELECT * FROM skills WHERE skill_id=?");
@@ -34,76 +38,90 @@ if ($action === 'edit' && isset($_GET['id'])) {
 ?>
 <?php require_once __DIR__ . '/../../src/views/layout/header.php'; ?>
 
-<h2>Skill Editor</h2>
-<?php if ($message): ?>
-    <div class="alert alert-success"><?= htmlspecialchars($message) ?></div>
-<?php endif; ?>
-
-<div class="row">
-    <div class="col-md-4">
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title"><?= $editSkill ? 'Edit Skill' : 'Add Skill' ?></h5>
-                <form method="POST" action="?action=<?= $editSkill ? 'edit' : 'add' ?>">
-                    <?php if ($editSkill): ?>
-                        <input type="hidden" name="skill_id" value="<?= $editSkill['skill_id'] ?>">
-                    <?php endif; ?>
-                    <div class="mb-3">
-                        <label class="form-label">Skill Name</label>
-                        <input type="text" name="skill_name" class="form-control" value="<?= htmlspecialchars($editSkill['skill_name'] ?? '') ?>" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Category</label>
-                        <select name="category" class="form-select">
-                            <?php foreach ($categories as $cat): ?>
-                                <option value="<?= $cat ?>" <?= ($editSkill['category'] ?? '') === $cat ? 'selected' : '' ?>><?= $cat ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Default Weight (0.00 - 1.00)</label>
-                        <input type="number" step="0.01" min="0" max="1" name="default_weight" class="form-control" value="<?= $editSkill['default_weight'] ?? 0.50 ?>" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary"><?= $editSkill ? 'Update' : 'Add' ?></button>
-                    <?php if ($editSkill): ?>
-                        <a href="?" class="btn btn-secondary">Cancel</a>
-                    <?php endif; ?>
-                </form>
-            </div>
-        </div>
+<header class="page-head">
+    <div>
+        <h1>Skills</h1>
+        <p>The competencies students are assessed on and jobs are matched against. Weight sets how much a skill counts by default.</p>
     </div>
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Existing Skills</h5>
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Category</th>
-                                <th>Weight</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($skills as $skill): ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($skill['skill_name']) ?></td>
-                                    <td><?= htmlspecialchars($skill['category']) ?></td>
-                                    <td><?= $skill['default_weight'] ?></td>
-                                    <td class="text-nowrap">
-                                        <a href="?action=edit&id=<?= $skill['skill_id'] ?>" class="btn btn-sm btn-outline-primary me-1">Edit</a>
-                                        <a href="?action=delete&id=<?= $skill['skill_id'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this skill?')">Delete</a>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+</header>
+<?= flash($message) ?>
+
+<div class="row g-3">
+    <div class="col-lg-4">
+        <section class="panel form-panel">
+            <h2 class="panel-title"><?= $editSkill ? 'Edit skill' : 'Add a skill' ?></h2>
+            <form method="POST" action="?action=<?= $editSkill ? 'edit' : 'add' ?>">
+                <?php if ($editSkill): ?>
+                    <input type="hidden" name="skill_id" value="<?= $editSkill['skill_id'] ?>">
+                <?php endif; ?>
+                <div class="mb-3">
+                    <label class="form-label" for="skill_name">Skill name</label>
+                    <input type="text" id="skill_name" name="skill_name" class="form-control" placeholder="e.g. Docker" value="<?= htmlspecialchars($editSkill['skill_name'] ?? '') ?>" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="category">Category</label>
+                    <select id="category" name="category" class="form-select">
+                        <?php foreach ($categories as $cat): ?>
+                            <option value="<?= $cat ?>" <?= ($editSkill['category'] ?? '') === $cat ? 'selected' : '' ?>><?= $cat ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label d-flex justify-content-between" for="default_weight">Default weight <output id="weightOut" class="text-muted fw-semibold"><?= $editSkill['default_weight'] ?? '0.50' ?></output></label>
+                    <input type="range" step="0.05" min="0" max="1" id="default_weight" name="default_weight" class="form-range" value="<?= $editSkill['default_weight'] ?? 0.50 ?>"
+                           oninput="weightOut.value = Number(this.value).toFixed(2)">
+                    <div class="d-flex justify-content-between small text-muted"><span>Minor</span><span>Critical</span></div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary"><?= $editSkill ? 'Save changes' : 'Add skill' ?></button>
+                    <?php if ($editSkill): ?><a href="?" class="btn btn-outline-secondary">Cancel</a><?php endif; ?>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <div class="col-lg-8">
+        <section class="panel">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <h2 class="panel-title mb-0"><?= count($skills) ?> skills</h2>
+                <div class="chips" role="group" aria-label="Filter by category">
+                    <button type="button" class="chip is-on" data-filter="">All</button>
+                    <?php foreach ($catCounts as $cat => $n): ?>
+                        <button type="button" class="chip" data-filter="<?= htmlspecialchars($cat) ?>"><?= htmlspecialchars($cat) ?> <span><?= $n ?></span></button>
+                    <?php endforeach; ?>
                 </div>
             </div>
-        </div>
+            <div class="table-responsive">
+                <table class="table data-table mb-0" id="skillsTable">
+                    <thead><tr><th>Skill</th><th>Category</th><th style="width: 22%">Weight</th><th class="text-end">Jobs asking</th><th class="text-end">Student avg</th><th></th></tr></thead>
+                    <tbody>
+                        <?php foreach ($skills as $skill): $w = (float)$skill['default_weight']; ?>
+                            <tr data-cat="<?= htmlspecialchars($skill['category']) ?>">
+                                <td><strong><?= htmlspecialchars($skill['skill_name']) ?></strong></td>
+                                <td><span class="tag"><?= htmlspecialchars($skill['category']) ?></span></td>
+                                <td><div class="meter meter-sm"><span class="is-ready" style="width: <?= $w * 100 ?>%"></span></div><span class="meter-val"><?= number_format($w, 2) ?></span></td>
+                                <td class="text-end num"><?= $skill['jobs'] ?: '<span class="text-muted">0</span>' ?></td>
+                                <td class="text-end num"><?= $skill['avg_level'] !== null ? $skill['avg_level'] . '<span class="text-muted">/100</span>' : '<span class="text-muted">—</span>' ?></td>
+                                <td>
+                                    <div class="row-actions">
+                                        <a href="?action=edit&id=<?= $skill['skill_id'] ?>" class="icon-btn" title="Edit" aria-label="Edit <?= htmlspecialchars($skill['skill_name']) ?>"><?= icon('edit') ?></a>
+                                        <a href="?action=delete&id=<?= $skill['skill_id'] ?>" class="icon-btn is-danger" title="Delete" aria-label="Delete <?= htmlspecialchars($skill['skill_name']) ?>" onclick="return confirm('Delete this skill?')"><?= icon('trash') ?></a>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
 </div>
+
+<script>
+document.querySelectorAll('.chip[data-filter]').forEach(chip => chip.addEventListener('click', () => {
+    document.querySelectorAll('.chip[data-filter]').forEach(c => c.classList.toggle('is-on', c === chip));
+    document.querySelectorAll('#skillsTable tbody tr').forEach(tr => tr.hidden = chip.dataset.filter && tr.dataset.cat !== chip.dataset.filter);
+}));
+</script>
 
 <?php require_once __DIR__ . '/../../src/views/layout/footer.php'; ?>

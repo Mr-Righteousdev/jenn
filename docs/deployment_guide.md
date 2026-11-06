@@ -67,6 +67,11 @@ DB_NAME=jenn_db
 DB_USERNAME=jenn_user
 DB_PASSWORD=your_strong_password_here
 RAPIDAPI_KEY=your_rapidapi_key
+# University SIS connection (read-only): the campus_dynamics schema
+UNI_DB_HOST=localhost
+UNI_DB_NAME=campus_dynamics
+UNI_DB_USERNAME=sis_readonly_user
+UNI_DB_PASSWORD=sis_readonly_password
 EOF
 
 # Set permissions
@@ -74,9 +79,44 @@ sudo chown -R www-data:www-data /var/www/jenn
 sudo chmod -R 755 /var/www/jenn
 sudo chmod 640 /var/www/jenn/.env
 
-# Seed database (optional)
+# University data: until the university's API is ready, load the academic tables from an SIS dump
+# into a local read-only copy (HR, payroll and admissions data in the dump are skipped)
+php src/scripts/load_university_dump.php /secure/path/passbook.sql
+# Admin account, first sync, switch on the IT programmes, draft curriculum mapping, second sync
 php src/scripts/seed.php
+
+# Keep university data fresh (nightly at 02:00)
+( crontab -l 2>/dev/null; echo "0 2 * * * php /var/www/jenn/src/scripts/sync.php >> /var/log/jenn-sync.log 2>&1" ) | crontab -
 ```
+
+### How university data gets in
+
+The app never stores or edits academic records itself. Students, lecturers, course units and results
+belong to the university's Student Information System (SIS), and the app reads them through one
+connector, `src/utils/University.php`, over a read-only connection.
+
+1. **Sync** (`src/utils/Sync.php`) copies the university structure (all faculties, programmes, course
+   units and curricula) and the students and results of programmes switched on, into this app's
+   database. Run it from **Admin → University data** or from cron.
+2. **Curriculum mapping** (**Admin → Curriculum**) records which skills each course unit builds.
+3. **Competency profiles** (`src/utils/Competency.php`) turn marks into skill levels:
+   the weighted average of a student's best marks in the units that build each skill.
+   Optional lecturer practical evidence counts for 25%.
+4. **Job matching** scores every profile against every job.
+
+Students sign in with their registration number and staff with their admin-system username, checked
+against the SIS portal accounts. Only the emergency admin has a local password.
+
+**Never set `UNI_AUTH_MODE=dev` in production.** It lets any university account sign in with
+`DEV_LOGIN_PASSWORD` and exists only until the university confirms how portal passwords are hashed.
+
+**Never commit the SIS dump** (`passbook.sql` is in `.gitignore`); it contains personal data.
+
+To connect to the real university system, point the `UNI_DB_*` settings at a read-only database user
+on it, or reimplement the methods of `University.php` against the university's API.
+
+**Upgrading an existing install:** back up, then run the migrations in `database/migrations/` in order.
+They clear university-sourced data (the sync rebuilds it) and keep admins, skills, CBC levels, jobs and roles.
 
 ---
 
